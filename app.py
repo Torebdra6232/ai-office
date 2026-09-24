@@ -2,163 +2,196 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from google import genai
+from PIL import Image
 
 load_dotenv()
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+api_key = os.environ.get("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key) if api_key else None
 MODEL = "gemma-4-26b-a4b-it"
 
-# 1. Page Configuration
-st.set_page_config(
-    page_title="AutoOffice OS · Autonomous AI Command",
-    page_icon="🏢",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="AutoOffice OS", page_icon="🏢", layout="wide")
 
-# 2. Sleek Dark Cyber-Executive Theme CSS
+# High-contrast command deck styling
 st.markdown("""
 <style>
-    /* Dark Theme Background */
-    .stApp {
-        background: radial-gradient(circle at 50% 0%, #0f172a 0%, #020617 100%);
-        color: #f8fafc;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    
-    /* Executive Agent Cards */
-    .agent-card {
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(56, 189, 248, 0.2);
-        border-radius: 16px;
-        padding: 18px;
-        backdrop-filter: blur(10px);
-        margin-bottom: 12px;
-        transition: all 0.2s ease-in-out;
-    }
-    .agent-card:hover {
-        border-color: rgba(56, 189, 248, 0.5);
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
-    }
-    
-    /* Glowing Badges */
-    .badge-ceo { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 9999px; padding: 2px 10px; font-size: 11px; font-weight: bold; }
-    .badge-cto { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 9999px; padding: 2px 10px; font-size: 11px; font-weight: bold; }
-    .badge-dev { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 9999px; padding: 2px 10px; font-size: 11px; font-weight: bold; }
-    
-    /* Custom Input Box */
-    .stTextInput > div > div > input {
-        background-color: #0b0f19 !important;
-        border: 1px solid #1e293b !important;
-        color: #f1f5f9 !important;
-        border-radius: 12px !important;
-        padding: 12px 16px !important;
-    }
-    .stTextInput > div > div > input:focus {
-        border-color: #38bdf8 !important;
-        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2) !important;
-    }
-
-    /* Primary Launch Button */
-    .stButton > button {
-        background: linear-gradient(135deg, #2563eb, #4f46e5) !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 10px 24px !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3) !important;
-    }
+    .stApp { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #020617 100%); color: #f8fafc; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] { background-color: #1e293b; border-radius: 8px; padding: 8px 16px; color: #94a3b8; }
+    .stTabs [aria-selected="true"] { background-color: #2563eb !important; color: white !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Header Banner
-st.markdown("""
-<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b; padding-bottom: 20px; margin-bottom: 24px;">
-    <div>
-        <span style="background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase;">AutoOffice OS · v2.4</span>
-        <h1 style="color: #f8fafc; font-size: 32px; font-weight: 800; margin: 8px 0 4px 0; letter-spacing: -0.5px;">Autonomous AI Headquarters</h1>
-        <p style="color: #94a3b8; font-size: 13px; margin: 0;">Multi-Agent Orchestration Engine · Powered by Google Gemma on 8GB Hardware</p>
-    </div>
-    <div style="background: #090d16; border: 1px solid #1e293b; padding: 10px 16px; border-radius: 14px; text-align: right;">
-        <span style="color: #10b981; font-size: 11px; font-weight: bold;">● Active & Ready</span><br/>
-        <span style="color: #64748b; font-family: monospace; font-size: 12px;">RAM: 64 MB / 8.0 GB</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# Top Bar
+st.title("🏢 AutoOffice OS · Multi-Team Autonomous Fleet")
+st.caption("6 Autonomous Agents · 2 Operating Squads · 8GB RAM Cloud Orchestration")
 
-# 4. Live Agent Roster Preview
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.markdown("""
-    <div class="agent-card">
-        <span class="badge-ceo">EXECUTIVE</span>
-        <h4 style="margin: 8px 0 2px 0; color: #f8fafc;">Marcus Vance</h4>
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">CEO & Strategy Orchestrator</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c2:
-    st.markdown("""
-    <div class="agent-card">
-        <span class="badge-cto">ARCHITECTURE</span>
-        <h4 style="margin: 8px 0 2px 0; color: #f8fafc;">Elena Rostova</h4>
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Chief Systems Architect</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c3:
-    st.markdown("""
-    <div class="agent-card">
-        <span class="badge-dev">ENGINEERING</span>
-        <h4 style="margin: 8px 0 2px 0; color: #f8fafc;">Devon Vance</h4>
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Lead Full-Stack Developer</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.write("")
-
-# 5. Mission Input Bar
-goal = st.text_input(
-    "🎯 Dispatch Business Mission:", 
-    placeholder="e.g. Build an automated YouTube script generator with viral hooks and SEO metadata..."
+# Top Mode Navigation
+mode = st.radio(
+    "Select Office Control Room:",
+    [
+        "👔 1-on-1 CEO Strategy Room (Marcus Vance)",
+        "🚀 Team Alpha (Engineering & Code Pipeline)",
+        "🎨 Team Beta (Design & Growth Marketing)"
+    ],
+    horizontal=True
 )
 
-if st.button("🚀 Kickoff Autonomous Sprint", use_container_width=True):
-    if not goal:
-        st.warning("Please enter a mission first!")
-    else:
-        with st.status("⚡ AutoOffice Autonomous Pipeline Active...", expanded=True) as status:
-            
-            # Step 1: CEO
-            st.write("👔 **Marcus Vance (CEO)** is structuring the Product Requirements Document (PRD)...")
-            ceo_res = client.models.generate_content(
-                model=MODEL,
-                contents=f"You are Marcus Vance, CEO. Formulate a comprehensive, structured PRD for: {goal}"
-            ).text
-            
-            # Step 2: CTO
-            st.write("📐 **Elena Rostova (CTO)** is generating database schema and API architecture...")
-            cto_res = client.models.generate_content(
-                model=MODEL,
-                contents=f"You are Elena Rostova, CTO. Review this PRD and design the technical schema:\n{ceo_res}"
-            ).text
+st.divider()
 
-            # Step 3: Lead Developer
-            st.write("💻 **Devon Vance (Lead Dev)** is writing full production-ready code...")
-            dev_res = client.models.generate_content(
-                model=MODEL,
-                contents=f"You are Devon Vance, Lead Engineer. Write clean, complete code fulfilling this architecture:\n{cto_res}"
-            ).text
-            
-            status.update(label="🎉 SPRINT COMPLETE: All Deliverables Vaulted!", state="complete", expanded=False)
+# =====================================================================
+# ROOM 1: 1-ON-1 CEO STRATEGY ROOM (With Image/Document Uploads)
+# =====================================================================
+if mode == "👔 1-on-1 CEO Strategy Room (Marcus Vance)":
+    st.subheader("👔 Executive War Room: Marcus Vance (CEO)")
+    st.caption("Plan 2-week roadmaps, ask questions, or upload wireframes & screenshots for Marcus to review.")
 
-        # 6. Deliverables Vault Tabs
-        st.markdown("### 🗄️ Deliverables Vault")
-        tab1, tab2, tab3 = st.tabs(["📋 Executive PRD", "🏗️ Technical Blueprint", "💻 Full Source Code"])
-        
-        with tab1:
-            st.markdown(ceo_res)
-        with tab2:
-            st.markdown(cto_res)
-        with tab3:
-            st.code(dev_res, language="python")
+    # Image / File Uploader
+    uploaded_file = st.file_uploader(
+        "📎 Attach Screenshot, Wireframe, or Document for Marcus:",
+        type=["png", "jpg", "jpeg", "txt", "py", "json"]
+    )
+    
+    if uploaded_file:
+        if uploaded_file.type.startswith("image/"):
+            img = Image.open(uploaded_file)
+            st.image(img, caption=f"Attached: {uploaded_file.name}", width=280)
+        else:
+            st.success(f"Attached document: {uploaded_file.name} ({uploaded_file.size} bytes)")
+
+    if "ceo_chat" not in st.session_state:
+        st.session_state.ceo_chat = [
+            {"role": "assistant", "content": "Welcome to the Executive Suite! I'm **Marcus Vance**, your CEO & Chief Strategist. What are we building today? You can brainstorm ideas, ask technical questions, or upload a wireframe for me to review."}
+        ]
+
+    for msg in st.session_state.ceo_chat:
+        with st.chat_message(msg["role"], avatar="👔" if msg["role"] == "assistant" else "👤"):
+            st.markdown(msg["content"])
+
+    if user_prompt := st.chat_input("Ask Marcus anything or plan a sprint..."):
+        st.session_state.ceo_chat.append({"role": "user", "content": user_prompt})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(user_prompt)
+
+        with st.chat_message("assistant", avatar="👔"):
+            with st.spinner("Marcus is formulating strategy..."):
+                sys_prompt = (
+                    "You are Marcus Vance, charismatic CEO of AutoOffice OS. "
+                    "Talk directly to the user as your Co-Founder. Be sharp, visionary, and pragmatic. "
+                    "If they ask about writing/applying code, explain that Devon writes the code in the Vault, "
+                    "and we keep human guardrails before pushing to production."
+                )
+                
+                # If image attached, review with multimodal
+                content_payload = [f"{sys_prompt}\nCo-Founder: {user_prompt}"]
+                if uploaded_file and uploaded_file.type.startswith("image/"):
+                    content_payload.append(Image.open(uploaded_file))
+
+                if client:
+                    try:
+                        res = client.models.generate_content(
+                            model="gemini-2.5-flash",
+                            contents=content_payload
+                        ).text
+                    except Exception:
+                        res = client.models.generate_content(
+                            model=MODEL,
+                            contents=f"{sys_prompt}\nUser prompt: {user_prompt}"
+                        ).text
+                else:
+                    res = f"Executive Advisory: I have registered your strategy request for '{user_prompt}'. Let's dispatch Team Alpha to architect and code the solution."
+
+                st.markdown(res)
+                st.session_state.ceo_chat.append({"role": "assistant", "content": res})
+
+# =====================================================================
+# ROOM 2: TEAM ALPHA (Engineering & Code Pipeline)
+# Agents: Marcus (CEO) -> Elena (CTO) -> Devon (Dev) -> Tariq (QA)
+# =====================================================================
+elif mode == "🚀 Team Alpha (Engineering & Code Pipeline)":
+    st.subheader("🚀 Team Alpha: Software Engineering & Architecture")
+    st.markdown("**Squad Roster:** 👔 Marcus (CEO) → 📐 Elena (CTO) → 💻 Devon (Lead Dev) → 🛡️ Tariq (QA Auditor)")
+    
+    alpha_goal = st.text_input(
+        "Enter Engineering Mission:",
+        placeholder="e.g. Build a multi-tenant API authentication router with JWT token refresh"
+    )
+
+    if st.button("🚀 Dispatch Team Alpha Sprint", type="primary"):
+        if not alpha_goal:
+            st.warning("Please specify an engineering goal!")
+        else:
+            with st.status("🏢 Team Alpha is executing sprint...", expanded=True) as status:
+                st.write("👔 **Marcus (CEO)** is drafting technical specifications...")
+                prd = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Marcus Vance, CEO. Write a clean PRD & requirements for: {alpha_goal}"
+                ).text if client else "Mock PRD generated."
+
+                st.write("📐 **Elena (CTO)** is modeling schemas & architecture...")
+                arch = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Elena Rostova, CTO. Based on this PRD, design the database schemas, API routes, and tech stack:\n{prd}"
+                ).text if client else "Mock Architecture generated."
+
+                st.write("💻 **Devon (Lead Dev)** is writing 100% complete working code...")
+                code = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Devon Vance, Lead Dev. Write clean, complete, working production code for:\n{arch}"
+                ).text if client else "# Devon Code Generated"
+
+                st.write("🛡️ **Tariq (QA Auditor)** is testing & verifying edge cases...")
+                qa = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Tariq Al-Mansoor, QA Auditor. Stress test and audit this code for security, 8GB memory leaks, and syntax bugs:\n{code}"
+                ).text if client else "QA Audit passed."
+
+                status.update(label="✅ Team Alpha Sprint Complete!", state="complete")
+
+            t1, t2, t3, t4 = st.tabs(["📋 CEO PRD", "📐 CTO Architecture", "💻 Devon Code", "🛡️ QA Audit"])
+            with t1: st.markdown(prd)
+            with t2: st.markdown(arch)
+            with t3: st.code(code, language="python")
+            with t4: st.markdown(qa)
+
+# =====================================================================
+# ROOM 3: TEAM BETA (Design & Growth Marketing)
+# Agents: Marcus (CEO) -> Sora (Product Designer) -> Maya (Growth & Ops)
+# =====================================================================
+else:
+    st.subheader("🎨 Team Beta: Product Design & Growth Revenue")
+    st.markdown("**Squad Roster:** 👔 Marcus (CEO) → 🎨 Sora (UI/UX Designer) → 📈 Maya (Growth & Copywriting)")
+    
+    beta_goal = st.text_input(
+        "Enter Design / Growth Mission:",
+        placeholder="e.g. Design a dark-mode pricing page and write a viral Twitter/LinkedIn launch sequence"
+    )
+
+    if st.button("🎨 Dispatch Team Beta Sprint", type="primary"):
+        if not beta_goal:
+            st.warning("Please specify a design/marketing goal!")
+        else:
+            with st.status("🏢 Team Beta is executing sprint...", expanded=True) as status:
+                st.write("👔 **Marcus (CEO)** is defining value proposition & target audience...")
+                positioning = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Marcus Vance, CEO. Define the target audience, pricing tiers, and value proposition for: {beta_goal}"
+                ).text if client else "Mock Value Prop generated."
+
+                st.write("🎨 **Sora (Product Designer)** is crafting design tokens & UI components...")
+                design = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Sora Takahashi, Product Designer. Create UI wireframe specs, Tailwind tokens, and layout guidelines for:\n{positioning}"
+                ).text if client else "Mock Design Tokens generated."
+
+                st.write("📈 **Maya (Growth & Ops)** is drafting launch copy & email sequences...")
+                marketing = client.models.generate_content(
+                    model=MODEL,
+                    contents=f"You are Maya Lin, Head of Growth. Write high-converting viral launch copy, a 5-part email welcome sequence, and social posts for:\n{positioning}"
+                ).text if client else "Mock Marketing Copy generated."
+
+                status.update(label="✅ Team Beta Sprint Complete!", state="complete")
+
+            b1, b2, b3 = st.tabs(["🎯 Positioning (Marcus)", "🎨 UI/UX Design System (Sora)", "📈 Growth & Copy (Maya)"])
+            with b1: st.markdown(positioning)
+            with b2: st.markdown(design)
+            with b3: st.markdown(marketing)
