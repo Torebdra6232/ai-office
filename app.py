@@ -24,27 +24,51 @@ if api_key:
     except Exception as e:
         st.error(f"Failed to initialize Gemini Client: {e}")
 
-# High-availability model sequence:
-# gemini-2.5-flash-lite avoids the 503 "high demand" bottlenecks of standard flash
-STABLE_MODELS = [
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro"
-]
+@st.cache_resource(show_spinner=False)
+def discover_active_models():
+    """
+    Dynamically asks Google's API which models are actively available
+    for this exact API key, ensuring it never hits deprecated models.
+    """
+    recommended_defaults = [
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite"
+    ]
+    if not client:
+        return recommended_defaults
 
-def safe_generate_content(prompt_or_contents, system_instruction=None, retries=2):
+    try:
+        discovered = []
+        for m in client.models.list():
+            raw_name = getattr(m, "name", "")
+            name = raw_name.replace("models/", "")
+            if "gemini" in name.lower() and not any(legacy in name for legacy in ["1.5", "2.0"]):
+                discovered.append(name)
+        
+        # Sort so gemini-3.1-pro-preview and gemini-2.5-flash are tried first
+        ordered = [m for m in recommended_defaults if m in discovered]
+        for m in discovered:
+            if m not in ordered:
+                ordered.append(m)
+        return ordered if ordered else recommended_defaults
+    except Exception:
+        return recommended_defaults
+
+def safe_generate_content(prompt_or_contents, system_instruction=None, max_retries=2):
     """
     Resilient generation helper:
-    1. Uses high-throughput gemini-2.5-flash-lite first to bypass 503 traffic surges.
-    2. Retries automatically if Google sends a temporary 503/429 spike.
-    3. Falls back seamlessly to gemini-2.5-flash and gemini-2.5-pro.
+    1. Tries dynamically discovered active models.
+    2. Retries gracefully with exponential backoff on temporary 503/429 spikes.
     """
     if not client:
         return "⚠️ Please set your `GEMINI_API_KEY` in Streamlit Secrets or your .env file."
 
+    models_to_try = discover_active_models()
     last_error = ""
-    for model_name in STABLE_MODELS:
-        for attempt in range(retries + 1):
+
+    for model_name in models_to_try:
+        for attempt in range(max_retries + 1):
             try:
                 config = {}
                 if system_instruction:
@@ -61,14 +85,15 @@ def safe_generate_content(prompt_or_contents, system_instruction=None, retries=2
                 err_str = str(e)
                 last_error = err_str
 
-                # If Google servers report temporary high demand (503) or rate-limit (429), pause and retry
-                if any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500"]):
-                    time.sleep(1.5)
+                # If temporary 503 (high demand) or 429 (rate limit), pause and retry
+                if any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"]):
+                    time.sleep(1.5 * (attempt + 1))
                     continue
                 else:
+                    # Model not available or other error: advance immediately to next model
                     break
 
-    return f"⚠️ Google AI servers are temporarily busy. Please try again in 5 seconds. (Details: {last_error})"
+    return f"⚠️ Service notice: AI agents are momentarily resting. Please try again. (Details: {last_error})"
 
 
 # 2. Sidebar Navigation & Team Selection
@@ -149,7 +174,7 @@ if mode == "💬 Executive Suite (Marcus Vance, CEO)":
         contents.append(user_input)
 
         with st.chat_message("assistant", avatar="👔"):
-            with st.spinner("Marcus is analyzing your request..."):
+            with st.spinner("Marcus is reviewing your request..."):
                 reply = safe_generate_content(contents, system_instruction=marcus_system)
                 st.markdown(reply)
                 st.session_state.chat_history.append(("assistant", reply))
