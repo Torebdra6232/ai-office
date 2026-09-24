@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import time
 from dotenv import load_dotenv
 from google import genai
 from PIL import Image
@@ -7,7 +8,12 @@ from PIL import Image
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
-MODEL = "gemma-4-26b-a4b-it"
+
+# Traffic-proof model strategy:
+# Gemma for pure text (avoids Gemini 15 RPM limits)
+# Gemini 1.5 Flash for vision/multimodal uploads and backup
+TEXT_MODEL = "gemma-2-27b-it"
+VISION_AND_BACKUP_MODEL = "gemini-1.5-flash"
 
 st.set_page_config(page_title="AutoOffice OS", page_icon="🏢", layout="wide")
 
@@ -21,9 +27,53 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Safe generator function: Prevents 429 traffic limit and never crashes with red screen
+def safe_generate(prompt_text, image=None):
+    if not client:
+        return "⚠️ Note: GEMINI_API_KEY is not set in Secrets. Running in simulated offline mode."
+    
+    # Tiny 1.2s breather between agent steps so 4 agents never trip Google's 15 RPM limit
+    time.sleep(1.2)
+
+    # If user attached an image, use Gemini 1.5 Flash (handles vision)
+    if image is not None:
+        try:
+            response = client.models.generate_content(
+                model=VISION_AND_BACKUP_MODEL,
+                contents=[prompt_text, image]
+            )
+            return response.text
+        except Exception:
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[prompt_text, image]
+                )
+                return response.text
+            except Exception as e:
+                return f"⚠️ Multimodal analysis notice: Could not process image. ({str(e)})"
+
+    # For text-only tasks: Use Gemma first to avoid Gemini traffic collisions
+    try:
+        response = client.models.generate_content(
+            model=TEXT_MODEL,
+            contents=prompt_text
+        )
+        return response.text
+    except Exception:
+        # Automatic fallback to Gemini 1.5 Flash
+        try:
+            response = client.models.generate_content(
+                model=VISION_AND_BACKUP_MODEL,
+                contents=prompt_text
+            )
+            return response.text
+        except Exception as e:
+            return f"⚠️ Traffic breather active: Google API is currently rate-limited. Please retry in 10 seconds. ({str(e)})"
+
 # Top Bar
 st.title("🏢 AutoOffice OS · Multi-Team Autonomous Fleet")
-st.caption("6 Autonomous Agents · 2 Operating Squads · 8GB RAM Cloud Orchestration")
+st.caption("6 Autonomous Agents · 2 Operating Squads · Zero-Traffic Burst Protection")
 
 # Top Mode Navigation
 mode = st.radio(
@@ -51,10 +101,11 @@ if mode == "👔 1-on-1 CEO Strategy Room (Marcus Vance)":
         type=["png", "jpg", "jpeg", "txt", "py", "json"]
     )
     
+    pil_image = None
     if uploaded_file:
         if uploaded_file.type.startswith("image/"):
-            img = Image.open(uploaded_file)
-            st.image(img, caption=f"Attached: {uploaded_file.name}", width=280)
+            pil_image = Image.open(uploaded_file)
+            st.image(pil_image, caption=f"Attached: {uploaded_file.name}", width=280)
         else:
             st.success(f"Attached document: {uploaded_file.name} ({uploaded_file.size} bytes)")
 
@@ -75,31 +126,13 @@ if mode == "👔 1-on-1 CEO Strategy Room (Marcus Vance)":
         with st.chat_message("assistant", avatar="👔"):
             with st.spinner("Marcus is formulating strategy..."):
                 sys_prompt = (
-                    "You are Marcus Vance, charismatic CEO of AutoOffice OS. "
+                    "You are Marcus Vance, the charismatic, sharp CEO of AutoOffice OS. "
                     "Talk directly to the user as your Co-Founder. Be sharp, visionary, and pragmatic. "
-                    "If they ask about writing/applying code, explain that Devon writes the code in the Vault, "
+                    "If they ask about writing or applying code, explain that Devon writes the code in the Vault, "
                     "and we keep human guardrails before pushing to production."
                 )
-                
-                # If image attached, review with multimodal
-                content_payload = [f"{sys_prompt}\nCo-Founder: {user_prompt}"]
-                if uploaded_file and uploaded_file.type.startswith("image/"):
-                    content_payload.append(Image.open(uploaded_file))
-
-                if client:
-                    try:
-                        res = client.models.generate_content(
-                            model="gemini-2.5-flash",
-                            contents=content_payload
-                        ).text
-                    except Exception:
-                        res = client.models.generate_content(
-                            model=MODEL,
-                            contents=f"{sys_prompt}\nUser prompt: {user_prompt}"
-                        ).text
-                else:
-                    res = f"Executive Advisory: I have registered your strategy request for '{user_prompt}'. Let's dispatch Team Alpha to architect and code the solution."
-
+                full_prompt = f"{sys_prompt}\nCo-Founder: {user_prompt}"
+                res = safe_generate(full_prompt, image=pil_image)
                 st.markdown(res)
                 st.session_state.ceo_chat.append({"role": "assistant", "content": res})
 
@@ -122,28 +155,16 @@ elif mode == "🚀 Team Alpha (Engineering & Code Pipeline)":
         else:
             with st.status("🏢 Team Alpha is executing sprint...", expanded=True) as status:
                 st.write("👔 **Marcus (CEO)** is drafting technical specifications...")
-                prd = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Marcus Vance, CEO. Write a clean PRD & requirements for: {alpha_goal}"
-                ).text if client else "Mock PRD generated."
+                prd = safe_generate(f"You are Marcus Vance, CEO. Write a clean PRD & requirements for: {alpha_goal}")
 
                 st.write("📐 **Elena (CTO)** is modeling schemas & architecture...")
-                arch = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Elena Rostova, CTO. Based on this PRD, design the database schemas, API routes, and tech stack:\n{prd}"
-                ).text if client else "Mock Architecture generated."
+                arch = safe_generate(f"You are Elena Rostova, CTO. Based on this PRD, design the database schemas, API routes, and tech stack:\n{prd}")
 
                 st.write("💻 **Devon (Lead Dev)** is writing 100% complete working code...")
-                code = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Devon Vance, Lead Dev. Write clean, complete, working production code for:\n{arch}"
-                ).text if client else "# Devon Code Generated"
+                code = safe_generate(f"You are Devon Vance, Lead Dev. Write clean, complete, working production code for:\n{arch}")
 
                 st.write("🛡️ **Tariq (QA Auditor)** is testing & verifying edge cases...")
-                qa = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Tariq Al-Mansoor, QA Auditor. Stress test and audit this code for security, 8GB memory leaks, and syntax bugs:\n{code}"
-                ).text if client else "QA Audit passed."
+                qa = safe_generate(f"You are Tariq Al-Mansoor, QA Auditor. Stress test and audit this code for security, 8GB memory leaks, and syntax bugs:\n{code}")
 
                 status.update(label="✅ Team Alpha Sprint Complete!", state="complete")
 
@@ -172,22 +193,13 @@ else:
         else:
             with st.status("🏢 Team Beta is executing sprint...", expanded=True) as status:
                 st.write("👔 **Marcus (CEO)** is defining value proposition & target audience...")
-                positioning = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Marcus Vance, CEO. Define the target audience, pricing tiers, and value proposition for: {beta_goal}"
-                ).text if client else "Mock Value Prop generated."
+                positioning = safe_generate(f"You are Marcus Vance, CEO. Define the target audience, pricing tiers, and value proposition for: {beta_goal}")
 
                 st.write("🎨 **Sora (Product Designer)** is crafting design tokens & UI components...")
-                design = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Sora Takahashi, Product Designer. Create UI wireframe specs, Tailwind tokens, and layout guidelines for:\n{positioning}"
-                ).text if client else "Mock Design Tokens generated."
+                design = safe_generate(f"You are Sora Takahashi, Product Designer. Create UI wireframe specs, Tailwind tokens, and layout guidelines for:\n{positioning}")
 
                 st.write("📈 **Maya (Growth & Ops)** is drafting launch copy & email sequences...")
-                marketing = client.models.generate_content(
-                    model=MODEL,
-                    contents=f"You are Maya Lin, Head of Growth. Write high-converting viral launch copy, a 5-part email welcome sequence, and social posts for:\n{positioning}"
-                ).text if client else "Mock Marketing Copy generated."
+                marketing = safe_generate(f"You are Maya Lin, Head of Growth. Write high-converting viral launch copy, a 5-part email welcome sequence, and social posts for:\n{positioning}")
 
                 status.update(label="✅ Team Beta Sprint Complete!", state="complete")
 
