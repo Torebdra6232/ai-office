@@ -24,44 +24,51 @@ if api_key:
     except Exception as e:
         st.error(f"Failed to initialize Gemini Client: {e}")
 
-# Active 2026 production models (with automated fallback sequence)
-PRIMARY_MODELS = [
+# High-availability model sequence:
+# gemini-2.5-flash-lite avoids the 503 "high demand" bottlenecks of standard flash
+STABLE_MODELS = [
+    "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
-    "gemini-3.8-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest"
+    "gemini-2.5-pro"
 ]
 
-def safe_generate_content(prompt_or_contents, system_instruction=None):
+def safe_generate_content(prompt_or_contents, system_instruction=None, retries=2):
     """
     Resilient generation helper:
-    Tries active production models sequentially and handles rate limits cleanly.
+    1. Uses high-throughput gemini-2.5-flash-lite first to bypass 503 traffic surges.
+    2. Retries automatically if Google sends a temporary 503/429 spike.
+    3. Falls back seamlessly to gemini-2.5-flash and gemini-2.5-pro.
     """
     if not client:
         return "⚠️ Please set your `GEMINI_API_KEY` in Streamlit Secrets or your .env file."
 
-    last_error = None
-    for model_name in PRIMARY_MODELS:
-        try:
-            config = {}
-            if system_instruction:
-                config["system_instruction"] = system_instruction
-            
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt_or_contents,
-                config=config if config else None
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            last_error = str(e)
-            # If rate-limited (429), pause briefly before trying next model
-            if "429" in last_error or "RESOURCE_EXHAUSTED" in last_error:
-                time.sleep(2)
-            continue
+    last_error = ""
+    for model_name in STABLE_MODELS:
+        for attempt in range(retries + 1):
+            try:
+                config = {}
+                if system_instruction:
+                    config["system_instruction"] = system_instruction
 
-    return f"⚠️ Service notice: AI agents are momentarily resting. Please try again in a few seconds. (Details: {last_error})"
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt_or_contents,
+                    config=config if config else None
+                )
+                if response and response.text:
+                    return response.text
+            except Exception as e:
+                err_str = str(e)
+                last_error = err_str
+
+                # If Google servers report temporary high demand (503) or rate-limit (429), pause and retry
+                if any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500"]):
+                    time.sleep(1.5)
+                    continue
+                else:
+                    break
+
+    return f"⚠️ Google AI servers are temporarily busy. Please try again in 5 seconds. (Details: {last_error})"
 
 
 # 2. Sidebar Navigation & Team Selection
@@ -142,7 +149,7 @@ if mode == "💬 Executive Suite (Marcus Vance, CEO)":
         contents.append(user_input)
 
         with st.chat_message("assistant", avatar="👔"):
-            with st.spinner("Marcus is reviewing your request..."):
+            with st.spinner("Marcus is analyzing your request..."):
                 reply = safe_generate_content(contents, system_instruction=marcus_system)
                 st.markdown(reply)
                 st.session_state.chat_history.append(("assistant", reply))
@@ -167,13 +174,13 @@ elif mode == "🚀 Team Alpha Sprint (Engineering & Architecture)":
             with st.status("🚀 Team Alpha is collaborating on your sprint...", expanded=True) as status:
                 
                 # 1. Marcus Vance
-                status.update(label="👔 Marcus Vance is outlining the technical scope and priorities...")
+                status.update(label="👔 Marcus Vance is outlining technical priorities...")
                 marcus_prompt = f"Executive Scope & Technical Objective:\n{project_task}\nProvide an executive engineering directive."
                 marcus_out = safe_generate_content(marcus_prompt, "You are Marcus Vance, CEO. Set high-level engineering deliverables.")
                 time.sleep(1)
 
                 # 2. Elena Rostova
-                status.update(label="🏛️ Elena Rostova is formulating the system architecture...")
+                status.update(label="🏛️ Elena Rostova is formulating system architecture...")
                 elena_prompt = f"CEO Directive:\n{marcus_out}\n\nTask:\n{project_task}\nProvide detailed system architecture, database schema, and component design."
                 elena_out = safe_generate_content(elena_prompt, "You are Elena Rostova, Lead Architect. Output clean architectural specifications.")
                 time.sleep(1)
@@ -191,7 +198,7 @@ elif mode == "🚀 Team Alpha Sprint (Engineering & Architecture)":
                 
                 status.update(label="✅ Team Alpha Sprint Complete!", state="complete")
 
-            # Display results in organized tabs
+            # Display results in tabs
             t1, t2, t3, t4 = st.tabs([
                 "👔 Strategy (Marcus)",
                 "🏛️ Architecture (Elena)",
@@ -235,7 +242,7 @@ elif mode == "🎨 Team Beta Sprint (Product, Design & Growth)":
                 time.sleep(1)
 
                 # 3. Maya Lin
-                status.update(label="📈 Maya Lin is writing high-converting landing page copy & launch strategy...")
+                status.update(label="📈 Maya Lin is writing high-converting launch copy...")
                 maya_prompt = f"Product & UX Blueprint:\n{design}\nWrite high-converting headline copy, email launch sequence, and viral growth hooks."
                 marketing = safe_generate_content(maya_prompt, "You are Maya Lin, Growth & Marketing Director. Output high-converting copy and acquisition strategy.")
 
