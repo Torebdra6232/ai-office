@@ -1,6 +1,8 @@
 import streamlit as st
 import os
 import time
+import json
+import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from google import genai
@@ -8,7 +10,7 @@ from PIL import Image
 
 # 1. Page Configuration
 st.set_page_config(
-    page_title="AutoOffice OS - Multi-Task Enterprise Dashboard",
+    page_title="AutoOffice OS - Enterprise Mission Control",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -17,7 +19,6 @@ st.set_page_config(
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 
-# Initialize Google GenAI client
 client = None
 if api_key:
     try:
@@ -25,47 +26,34 @@ if api_key:
     except Exception as e:
         st.error(f"Failed to initialize Gemini Client: {e}")
 
-# Global Session State for Accounting, Tasks & Chat
+# Isolated Chat Memories for Each Private Room
+if "chat_ceo" not in st.session_state:
+    st.session_state.chat_ceo = []
+if "chat_social" not in st.session_state:
+    st.session_state.chat_social = []
+if "chat_trading" not in st.session_state:
+    st.session_state.chat_trading = []
+if "chat_appdev" not in st.session_state:
+    st.session_state.chat_appdev = []
+
+# Financial & Dispatch Logs
 if "token_ledger" not in st.session_state:
     st.session_state.token_ledger = []
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+if "webhook_logs" not in st.session_state:
+    st.session_state.webhook_logs = []
+if "trade_logs" not in st.session_state:
+    st.session_state.trade_logs = []
 
-# Pre-seeded Daily Task Dashboard
-if "tasks" not in st.session_state:
-    st.session_state.tasks = [
-        {
-            "id": "TSK-01",
-            "team": "📱 Social Media Team",
-            "title": "Weekly Content Engine (YouTube Script & X Thread)",
-            "platform": "YouTube & Twitter/X",
-            "status": "⚡ In Progress",
-            "updated": "Today 09:15",
-            "output": "Drafting viral script on '5 AI tools replacing entire agencies' + 8-part tweet breakdown."
-        },
-        {
-            "id": "TSK-02",
-            "team": "📈 Trading & Markets Team",
-            "title": "BTC & ETH Liquidity Sweep Analysis + Gold (XAU/USD)",
-            "platform": "Crypto & Forex",
-            "status": "✅ Ready for Review",
-            "updated": "Today 08:30",
-            "output": "Bullish divergence identified on 4H chart. Key support held at $64,200. Risk/Reward ratio 1:3.2."
-        },
-        {
-            "id": "TSK-03",
-            "team": "📲 App Development Team",
-            "title": "SaaS Habit & Micro-Journaling App for iOS/Android",
-            "platform": "App Store & Play Store",
-            "status": "⚡ In Progress",
-            "updated": "Today 10:00",
-            "output": "Kaelen & Devon building React Native auth flow, local SQLite caching, and RevenueCat subscription tiers."
-        }
-    ]
+# Daily Mission Control Statuses
+if "social_draft" not in st.session_state:
+    st.session_state.social_draft = "Campaign Draft: 5 AI Automation Tools that save 20 hrs/week (YouTube Script + 6-part X Thread ready)."
+if "trading_setup" not in st.session_state:
+    st.session_state.trading_setup = "XAU/USD (Gold) BUY Limit @ 2354.20 | SL: 2348.00 (62 pips) | TP: 2372.00 | Lot: 0.10"
+if "app_status" not in st.session_state:
+    st.session_state.app_status = "HabitFlow Mobile App: Core React Native auth, SQLite offline cache, and RevenueCat paywalls built."
 
 @st.cache_resource(show_spinner=False)
 def discover_active_models():
-    """Dynamically asks Google's API which models are actively available."""
     defaults = ["gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
     if not client:
         return defaults
@@ -85,12 +73,9 @@ def discover_active_models():
         return defaults
 
 def record_token_usage(agent_name, model_name, usage_metadata):
-    """Logs token usage and cost for Finley the Accountant."""
     prompt_tokens = getattr(usage_metadata, "prompt_token_count", 0) or 0
     candidate_tokens = getattr(usage_metadata, "candidates_token_count", 0) or 0
     total_tokens = prompt_tokens + candidate_tokens
-    
-    # Blended estimate: ~$0.15/1M input, ~$0.60/1M output
     cost_usd = (prompt_tokens * 0.00000015) + (candidate_tokens * 0.00000060)
 
     st.session_state.token_ledger.append({
@@ -104,7 +89,6 @@ def record_token_usage(agent_name, model_name, usage_metadata):
     })
 
 def safe_generate_content(prompt_or_contents, system_instruction=None, agent_name="AI Agent", max_retries=2):
-    """Resilient generation with auto-retry and automated accounting logging."""
     if not client:
         return "⚠️ Please set your `GEMINI_API_KEY` in Streamlit Secrets or your .env file."
 
@@ -139,356 +123,325 @@ def safe_generate_content(prompt_or_contents, system_instruction=None, agent_nam
     return f"⚠️ Service notice: AI agents are momentarily resting. Please try again. (Details: {last_error})"
 
 
-# 2. Sidebar Navigation
+# -------------------------------------------------------------
+# SIDEBAR NAVIGATION
+# -------------------------------------------------------------
 st.sidebar.title("🏢 AutoOffice OS")
-st.sidebar.caption("Autonomous Multi-Task Enterprise")
+st.sidebar.caption("Autonomous Enterprise Operations")
 
-mode = st.sidebar.radio(
-    "Select Workstation:",
+nav_choice = st.sidebar.radio(
+    "NAVIGATION:",
     [
-        "📊 Mission Control & Task Board",
-        "📱 Task 1: Social Media Team (YT, IG, FB, X)",
-        "📈 Task 2: Trading Team (Stocks, Forex, Crypto)",
-        "📲 Task 3: App Store Dev Team (Commercial Apps)",
+        "📊 Mission Control Dashboard",
+        "💬 Private Chat: Social Media (Chloe)",
+        "💬 Private Chat: Forex Trading (Ray Dalton)",
+        "💬 Private Chat: Executive CEO (Marcus Vance)",
+        "🚀 Team Alpha Sprint (Engineering & Code)",
         "🌐 Web Operator (Atlas - Browser Control)",
-        "💬 Executive Suite (Marcus Vance, CEO)",
-        "💰 Accountant & FinOps (Finley - Cost Tracker)"
-    ]
+        "💰 FinOps & Token Auditor (Finley)"
+    ],
+    index=0
 )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 👥 Enterprise Staff (10 Agents)")
+st.sidebar.markdown("### 👥 Your Active Staff")
 st.sidebar.markdown("""
-**Executive & Management:**
-- 👔 **Marcus Vance** — CEO & Chief Strategist
-- 💰 **Finley** — Accountant & Token Cost Auditor
-- 🌐 **Atlas** — Web & Browser Operator
-
-**Task 1: Social Media Team:**
-- 📱 **Chloe** — Head of Social Media (IG/TikTok/X)
-- 🎬 **Liam Cole** — YouTube Strategist & Video Producer
-- 📈 **Maya Lin** — Conversion & Community Copywriter
-
-**Task 2: Trading Team:**
-- 📊 **Ray Dalton** — Chief Quantitative Market Analyst
-- 🛡️ **Marcus Vance** — Risk & Capital Sizing
-
-**Task 3: App Development Team:**
-- 📲 **Kaelen Frost** — Principal App Store Architect
-- 💻 **Devon Brooks** — Senior Mobile & Full-Stack Engineer
-- 🛡️ **Tariq Chen** — Security & App Store Compliance
+- 👔 **Marcus Vance** — CEO & Lead Strategist
+- 📱 **Chloe & Liam** — Social Media & YouTube
+- 📊 **Ray Dalton** — Chief Forex Quant & MT5
+- 💻 **Devon & Kaelen** — App Architects
+- 💰 **Finley** — FinOps Accountant
+- 🌐 **Atlas** — Web Operator
 """)
 
 
 # =============================================================
-# 1. MISSION CONTROL & TASK DASHBOARD (Overview Board)
+# 1. MISSION CONTROL DASHBOARD (Easy-to-Understand Hub)
 # =============================================================
-if mode == "📊 Mission Control & Task Board":
-    st.header("📊 Mission Control: Daily Operations Board")
-    st.caption("Live status, active pipelines, and task updates across your 3 primary business operations.")
+if nav_choice == "📊 Mission Control Dashboard":
+    st.title("📊 Mission Control: Daily Operations Hub")
+    st.caption("Real-time operational status for your 3 primary business streams.")
 
-    # Top KPI Metrics
-    ledger = st.session_state.token_ledger
-    total_cost = sum(item["cost_usd"] for item in ledger)
-    active_count = len([t for t in st.session_state.tasks if "Progress" in t["status"]])
-    ready_count = len([t for t in st.session_state.tasks if "Ready" in t["status"]])
+    # High-level Metric Strip
+    total_cost = sum(item["cost_usd"] for item in st.session_state.token_ledger)
+    total_calls = len(st.session_state.token_ledger)
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        st.metric("Active Daily Tasks", f"{len(st.session_state.tasks)}")
-    with k2:
-        st.metric("Sprints in Progress", f"{active_count}", delta="Live" if active_count > 0 else "Idle")
-    with k3:
-        st.metric("Deliverables Ready", f"{ready_count}", delta="Ready")
-    with k4:
-        st.metric("Today's Token Spend", f"${total_cost:.4f} USD")
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric(label="📱 Social Content Status", value="Ready to Post", delta="1 Pending")
+    with m2:
+        st.metric(label="📈 Forex MT5 Desk", value="Active Setup", delta="XAU/USD")
+    with m3:
+        st.metric(label="📲 Commercial App Lab", value="In Build", delta="React Native")
+    with m4:
+        st.metric(label="💰 Today's Token Spend", value=f"${total_cost:.4f}", delta=f"{total_calls} calls")
 
     st.markdown("---")
 
-    # Quick Executive Action
-    col_dash1, col_dash2 = st.columns([3, 1])
-    with col_dash1:
-        st.subheader("📋 Real-Time Operations Board")
-    with col_dash2:
-        if st.button("⚡ Executive Status Briefing", type="primary", use_container_width=True):
-            with st.spinner("Marcus Vance is compiling your 3-team daily briefing..."):
+    # 3 Easy-To-Understand Operations Cards
+    col1, col2, col3 = st.columns(3)
+
+    # CARD 1: SOCIAL MEDIA
+    with col1:
+        st.subheader("📱 1. Social Media Hub")
+        st.markdown("**Channels:** YouTube, Instagram, Facebook, X")
+        st.info(f"**Latest Deliverable:**\n{st.session_state.social_draft[:140]}...")
+        st.markdown("**Status:** 🟢 `Ready for Approval`")
+        st.caption("Want changes? Open your **Private Chat with Chloe** to rewrite hooks or slides before posting!")
+
+    # CARD 2: FOREX TRADING
+    with col2:
+        st.subheader("📈 2. Forex MT5 Desk")
+        st.markdown("**Market:** MetaTrader 5 (24/5 Automated)")
+        st.success(f"**Active Setup:**\n{st.session_state.trading_setup}")
+        st.markdown("**Status:** 🟢 `Setup Verified`")
+        st.caption("Need to adjust risk or Stop-Loss? Open your **Private Chat with Ray Dalton** before firing orders!")
+
+    # CARD 3: APP DEV
+    with col3:
+        st.subheader("📲 3. Commercial App Lab")
+        st.markdown("**Targets:** Apple App Store & Google Play")
+        st.warning(f"**Current Sprint:**\n{st.session_state.app_status[:140]}...")
+        st.markdown("**Status:** 🔵 `Code Generated`")
+        st.caption("Review architecture, monetization models, and native code in **Team Alpha Sprint**.")
+
+    st.markdown("---")
+    st.subheader("⚡ Quick Executive Actions")
+    q1, q2 = st.columns(2)
+    with q1:
+        if st.button("📋 Generate Marcus's Daily Morning Standup", type="primary", use_container_width=True):
+            with st.spinner("Compiling cross-department standup briefing..."):
                 brief_prompt = f"""
-Current Active Tasks on Board:
-{st.session_state.tasks}
-
-Provide an executive morning standup briefing:
-1. Status of Social Media Team (YouTube, Instagram, Facebook, X)
-2. Status of Trading & Markets Team (Positions, Setups, Risk)
-3. Status of App Store Commercial Dev Team (Build progress & release target)
-4. Marcus's direct command for today's priority focus.
+Social State: {st.session_state.social_draft}
+Forex State: {st.session_state.trading_setup}
+App State: {st.session_state.app_status}
+Provide a crisp 4-bullet executive standup for the founder.
 """
-                briefing = safe_generate_content(brief_prompt, "You are Marcus Vance, CEO. Deliver a punchy executive standup briefing.", agent_name="Marcus (CEO)")
-                st.info(briefing)
-
-    # Render Task Cards
-    for task in st.session_state.tasks:
-        with st.container():
-            t_col1, t_col2, t_col3, t_col4 = st.columns([1, 3, 2, 2])
-            with t_col1:
-                st.markdown(f"**`{task['id']}`**")
-            with t_col2:
-                st.markdown(f"**{task['title']}**\n\n*{task['team']}*")
-            with t_col3:
-                st.markdown(f"🎯 **Platform/Target:** `{task['platform']}`\n\n🕒 **Updated:** {task['updated']}")
-            with t_col4:
-                status_color = "🟢" if "Ready" in task["status"] else "🟡"
-                st.markdown(f"**Status:** {status_color} {task['status']}")
-            
-            with st.expander(f"🔍 View Latest Output & Deliverable ({task['id']})"):
-                st.markdown(task["output"])
-            st.divider()
+                standup = safe_generate_content(brief_prompt, "You are Marcus Vance, CEO. Deliver a concise 4-bullet standup.", agent_name="Marcus (CEO)")
+                st.markdown(standup)
+    with q2:
+        if st.button("🧹 Clear All Stored Drafts & Reset", use_container_width=True):
+            st.session_state.social_draft = "No pending draft."
+            st.session_state.trading_setup = "No active trade."
+            st.rerun()
 
 
 # =============================================================
-# 2. TASK 1: SOCIAL MEDIA TEAM (YouTube, IG, FB, X)
+# 2. PRIVATE CHAT: SOCIAL MEDIA TEAM (Chloe & Liam)
 # =============================================================
-elif mode == "📱 Task 1: Social Media Team (YT, IG, FB, X)":
-    st.header("📱 Social Media Team: Cross-Platform Campaign Hub")
-    st.caption("Chloe (Head of Social), Liam Cole (YouTube Producer), and Maya Lin (Copywriter)")
+elif nav_choice == "💬 Private Chat: Social Media (Chloe)":
+    st.title("💬 Private War Room: Social Media Team")
+    st.caption("Talk directly with Chloe (Social Lead) & Liam (YouTube). Review drafts, request tweaks, and approve posts!")
 
-    platforms_selected = st.multiselect(
-        "Select Channels for this Sprint:",
-        ["YouTube (Video Script & Title)", "Twitter/X (Viral Thread & Hooks)", "Instagram (Carousel & Reel Script)", "Facebook (Ad Copy & Community Post)"],
-        default=["YouTube (Video Script & Title)", "Twitter/X (Viral Thread & Hooks)"]
-    )
+    # Top Action Bar
+    t_c1, t_c2 = st.columns([3, 1])
+    with t_c1:
+        st.markdown(f"**Current Working Draft:** `{st.session_state.social_draft[:90]}...`")
+    with t_c2:
+        if st.button("🧹 Clear Chat History"):
+            st.session_state.chat_social = []
+            st.rerun()
 
-    campaign_brief = st.text_area(
-        "Campaign Objective or Content Topic:",
-        placeholder="e.g. Announcing our new productivity app launch; share 5 actionable tips on mastering daily deep work."
-    )
+    st.markdown("---")
 
-    if st.button("🚀 Launch Social Media Campaign Sprint", type="primary"):
-        if not campaign_brief.strip():
-            st.warning("Please provide a content topic or campaign objective.")
+    # Render Chat History
+    for role, msg in st.session_state.chat_social:
+        with st.chat_message(role, avatar="📱" if role == "assistant" else "👤"):
+            st.markdown(msg)
+
+    social_input = st.chat_input("Tell Chloe: 'Make the YouTube hook punchier', 'Rewrite for Instagram carousel', etc...")
+    if social_input:
+        st.session_state.chat_social.append(("user", social_input))
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(social_input)
+
+        chloe_system = (
+            "You are Chloe, Head of Social Media, working alongside Liam Cole (YouTube Producer). "
+            "You help the user review, write, edit, and polish high-converting content for YouTube, Instagram, Facebook, and Twitter/X. "
+            "When the user requests changes, rewrite the content precisely as asked with hooks, captions, and slide layouts. "
+            "Be energetic, professional, and trend-aware."
+        )
+
+        with st.chat_message("assistant", avatar="📱"):
+            with st.spinner("Chloe is updating your content..."):
+                reply = safe_generate_content(social_input, system_instruction=chloe_system, agent_name="Chloe (Social Team)")
+                st.markdown(reply)
+                st.session_state.chat_social.append(("assistant", reply))
+                st.session_state.social_draft = reply
+
+    # Direct Webhook Dispatcher
+    st.markdown("---")
+    st.subheader("🚀 1-Click Dispatch to Live Social Media")
+    st.caption("Once you are happy with the draft above, dispatch it to your Make.com, Zapier, or Buffer webhook!")
+
+    webhook_url = st.text_input("Webhook URL:", placeholder="https://hook.make.com/your-live-social-hook")
+    if st.button("⚡ Dispatch Approved Draft Now", type="primary"):
+        if not webhook_url.strip():
+            st.warning("Please paste your Webhook URL above.")
         else:
-            with st.status("📱 Social Media Team is producing multi-channel assets...", expanded=True) as status:
-                status.update(label="📱 Chloe is developing cross-platform hooks & publishing schedule...")
-                time.sleep(1)
-
-                prompt = f"""
-Campaign Topic: {campaign_brief}
-Channels: {', '.join(platforms_selected)}
-
-Provide:
-1. 🎬 **YouTube Content** (if selected): 3 High-CTR Titles, Thumbnail Visual Concept, Hook Script (First 30 seconds), and Video Chapter Outline.
-2. 🐦 **Twitter/X Thread** (if selected): Irresistible hook tweet, 5 value body tweets, and strong CTA tweet.
-3. 📸 **Instagram Deliverables** (if selected): 5-slide carousel layout & Reel video script with visual cues.
-4. 📘 **Facebook Strategy** (if selected): Engaging storytelling post + conversion-focused ad copy.
-5. 📅 **Recommended Posting Schedule**: Optimal posting days and times.
-"""
-                social_output = safe_generate_content(prompt, "You are Chloe & Liam Cole, elite social media directors. Deliver viral, platform-native content.", agent_name="Chloe (Social Team)")
-                status.update(label="✅ Social Media Content Ready!", state="complete")
-
-            st.markdown(social_output)
-
-            # Auto-update Task Board
-            new_task = {
-                "id": f"TSK-0{len(st.session_state.tasks)+1}",
-                "team": "📱 Social Media Team",
-                "title": f"Campaign: {campaign_brief[:40]}...",
-                "platform": ", ".join(platforms_selected),
-                "status": "✅ Ready for Review",
-                "updated": datetime.now().strftime("%H:%M"),
-                "output": social_output
-            }
-            st.session_state.tasks.insert(0, new_task)
-            st.success("✅ Added to Mission Control Task Dashboard!")
+            try:
+                res = requests.post(webhook_url, json={"content": st.session_state.social_draft, "time": datetime.now().isoformat()}, timeout=8)
+                st.success(f"✅ Dispatched successfully! Status code: {res.status_code}")
+                st.session_state.webhook_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "status": "Dispatched", "code": res.status_code})
+            except Exception as e:
+                st.error(f"❌ Failed to reach Webhook: {e}")
 
 
 # =============================================================
-# 3. TASK 2: TRADING TEAM (Stocks, Forex, Crypto)
+# 3. PRIVATE CHAT: FOREX TRADING (Ray Dalton)
 # =============================================================
-elif mode == "📈 Task 2: Trading Team (Stocks, Forex, Crypto)":
-    st.header("📈 Trading & Market Intelligence Team")
-    st.caption("Ray Dalton (Chief Quantitative Analyst) & Marcus Vance (Risk & Capital Allocation)")
+elif nav_choice == "💬 Private Chat: Forex Trading (Ray Dalton)":
+    st.title("💬 Private Desk: Ray Dalton (Forex & MT5)")
+    st.caption("Direct consultation with your Chief Quantitative Analyst. Adjust Stop-Loss, recalculate lot sizes, and review chart setups.")
 
-    market_type = st.selectbox("Asset Class:", ["Crypto (e.g. BTC, ETH, SOL)", "Stocks / Indices (e.g. NVDA, TSLA, SPY, QQQ)", "Forex (e.g. EUR/USD, GBP/JPY, XAU/USD Gold)"])
-    ticker = st.text_input("Ticker / Pair:", placeholder="e.g. BTC/USDT, NVDA, or XAU/USD")
-    timeframe = st.select_slider("Analysis Timeframe:", options=["15M (Scalp)", "1H (Intraday)", "4H (Swing)", "1D (Position)"], value="4H (Swing)")
+    t_r1, t_r2 = st.columns([3, 1])
+    with t_r1:
+        st.markdown(f"**Current Trade Setup:** `{st.session_state.trading_setup}`")
+    with t_r2:
+        if st.button("🧹 Clear Desk History"):
+            st.session_state.chat_trading = []
+            st.rerun()
 
-    trade_context = st.text_area(
-        "Current Market Observations or Specific Question:",
-        placeholder="e.g. Price broke above key $68,000 resistance with heavy volume; looking for retest entry and risk parameters."
-    )
+    st.markdown("---")
 
-    if st.button("📊 Run Technical & Trade Setup Analysis", type="primary"):
-        if not ticker.strip():
-            st.warning("Please specify a ticker or trading pair.")
+    for role, msg in st.session_state.chat_trading:
+        with st.chat_message(role, avatar="📈" if role == "assistant" else "👤"):
+            st.markdown(msg)
+
+    trade_input = st.chat_input("Ask Ray: 'Tighten the Stop-Loss on Gold', 'What if CPI news drops today?', 'Calculate lot for $5k'...")
+    if trade_input:
+        st.session_state.chat_trading.append(("user", trade_input))
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(trade_input)
+
+        ray_system = (
+            "You are Ray Dalton, veteran institutional Forex trader and quantitative analyst. "
+            "You manage 24/5 automated MetaTrader 5 setups for EURUSD, GBPUSD, and XAUUSD (Gold). "
+            "When the user asks to adjust trade parameters (Stop-Loss, Take-Profit, lot sizing, invalidation levels), "
+            "calculate exact price points and risk percentages. Be disciplined, risk-first, and concise."
+        )
+
+        with st.chat_message("assistant", avatar="📈"):
+            with st.spinner("Ray is analyzing the market parameters..."):
+                reply = safe_generate_content(trade_input, system_instruction=ray_system, agent_name="Ray Dalton (Forex)")
+                st.markdown(reply)
+                st.session_state.chat_trading.append(("assistant", reply))
+                st.session_state.trading_setup = reply
+
+    # Direct MT5 Execution
+    st.markdown("---")
+    st.subheader("⚡ Fire Approved Order to MT5 Bridge")
+    st.caption("Send this trade order to your local or VPS MetaTrader 5 Webhook EA.")
+
+    mt5_url = st.text_input("MT5 Bridge URL:", placeholder="http://your-vps-ip:5000/trade")
+    if st.button("🚀 Fire Order to MT5", type="primary"):
+        if not mt5_url.strip():
+            st.warning("Please provide your MT5 Bridge URL.")
         else:
-            with st.status(f"📈 Ray Dalton is analyzing {ticker} on {timeframe}...", expanded=True) as status:
-                status.update(label=f"🔍 Scanning liquidity pools, support/resistance, and risk parameters...")
-                
-                trade_prompt = f"""
-Asset: {ticker} ({market_type})
-Timeframe: {timeframe}
-Trader Notes: {trade_context}
-
-Provide a professional trading desk briefing:
-1. 🎯 **Market Structure & Trend Bias**: Current trend (Bullish, Bearish, or Ranging) and pivotal price levels (Support & Resistance).
-2. ⚡ **Actionable Trade Setup**:
-   - Ideal Entry Zone
-   - Stop-Loss (Invalidation level)
-   - Take-Profit 1, 2, and 3
-   - Risk/Reward Ratio (Must be minimum 1:2.5)
-3. ⚠️ **Risk Management & Position Sizing**: Capital preservation rules and critical invalidation conditions.
-4. 📰 **Macro & Catalyst Watch**: Key upcoming economic data or news catalysts to monitor.
-"""
-                trade_output = safe_generate_content(trade_prompt, "You are Ray Dalton, veteran prop firm trader and quant analyst. Deliver disciplined, risk-first trade analysis.", agent_name="Ray Dalton (Trading)")
-                status.update(label="✅ Trade Analysis & Setup Complete!", state="complete")
-
-            st.markdown(trade_output)
-
-            # Auto-update Task Board
-            new_task = {
-                "id": f"TSK-0{len(st.session_state.tasks)+1}",
-                "team": "📈 Trading & Markets Team",
-                "title": f"Trade Plan: {ticker} ({timeframe})",
-                "platform": market_type,
-                "status": "✅ Ready for Review",
-                "updated": datetime.now().strftime("%H:%M"),
-                "output": trade_output
-            }
-            st.session_state.tasks.insert(0, new_task)
-            st.success("✅ Trade Setup logged to Mission Control Task Dashboard!")
+            try:
+                res = requests.post(mt5_url, json={"trade": st.session_state.trading_setup, "time": datetime.now().isoformat()}, timeout=6)
+                st.success(f"✅ Order fired to MT5! Response: {res.status_code}")
+                st.session_state.trade_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "status": "Sent to MT5"})
+            except Exception as e:
+                st.error(f"❌ Could not reach MT5 Bridge: {e}")
 
 
 # =============================================================
-# 4. TASK 3: APP STORE COMMERCIAL DEV TEAM
+# 4. PRIVATE CHAT: EXECUTIVE CEO (Marcus Vance)
 # =============================================================
-elif mode == "📲 Task 3: App Store Dev Team (Commercial Apps)":
-    st.header("📲 Commercial App Development Team (App Store & Google Play)")
-    st.caption("Kaelen Frost (App Store Architect), Devon Brooks (Senior Engineer), and Tariq Chen (Compliance)")
+elif nav_choice == "💬 Private Chat: Executive CEO (Marcus Vance)":
+    st.title("💬 Private Suite: Marcus Vance (CEO)")
+    st.caption("High-level strategic consultation, multi-team directives, and business roadmaps.")
 
-    app_name = st.text_input("Application Name or Project Codename:", placeholder="e.g. ZenTimer - Focus & Revenue Tracker for Creators")
-    tech_stack = st.selectbox("Preferred Framework / Stack:", ["React Native / Expo (iOS & Android)", "Flutter / Dart (Cross-Platform)", "Swift / SwiftUI (Native iOS)", "Progressive Web App (PWA / Next.js)"])
-    monetization = st.multiselect("Monetization Model:", ["Freemium + In-App Subscriptions (Weekly/Monthly)", "One-Time Pro Unlock", "Consumable Credits / Tokens"], default=["Freemium + In-App Subscriptions (Weekly/Monthly)"])
+    c_b1, c_b2 = st.columns([3, 1])
+    with c_b2:
+        if st.button("🧹 Clear CEO Chat"):
+            st.session_state.chat_ceo = []
+            st.rerun()
 
-    app_spec = st.text_area(
-        "Application Concept & Core Features to Build:",
-        placeholder="e.g. Offline-first habit tracking app with streak widgets, soundscapes, and RevenueCat paywall integration."
-    )
+    st.markdown("---")
 
-    if st.button("🚀 Build Commercial App Specification & Code", type="primary"):
-        if not app_spec.strip():
-            st.warning("Please describe the application concept and core features.")
+    for role, msg in st.session_state.chat_ceo:
+        with st.chat_message(role, avatar="👔" if role == "assistant" else "👤"):
+            st.markdown(msg)
+
+    ceo_input = st.chat_input("Talk to Marcus Vance about your company roadmap...")
+    if ceo_input:
+        st.session_state.chat_ceo.append(("user", ceo_input))
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(ceo_input)
+
+        with st.chat_message("assistant", avatar="👔"):
+            with st.spinner("Marcus is evaluating..."):
+                reply = safe_generate_content(ceo_input, "You are Marcus Vance, decisive CEO of AutoOffice OS.", agent_name="Marcus (CEO)")
+                st.markdown(reply)
+                st.session_state.chat_ceo.append(("assistant", reply))
+
+
+# =============================================================
+# 5. TEAM ALPHA SPRINT (Engineering & App Dev)
+# =============================================================
+elif nav_choice == "🚀 Team Alpha Sprint (Engineering & Code)":
+    st.title("🚀 Team Alpha: Commercial App Development Lab")
+    st.caption("Kaelen Frost (App Architect), Devon Brooks (Code), and Tariq Chen (DevOps) build complete commercial software.")
+
+    app_idea = st.text_area("Commercial App Concept:", placeholder="e.g. Offline-first habit & subscription tracker with RevenueCat paywalls and iOS widgets.")
+    framework = st.selectbox("Framework:", ["React Native / Expo (iOS & Android)", "Flutter / Dart", "SwiftUI Native iOS", "PWA Next.js"])
+
+    if st.button("⚡ Build Complete App Package", type="primary"):
+        if not app_idea.strip():
+            st.warning("Please describe your app idea.")
         else:
-            with st.status("📲 Commercial App Team is executing the build sprint...", expanded=True) as status:
-                status.update(label="🏛️ Kaelen Frost is architecting the App Store pipeline and monetization...")
-                time.sleep(1)
-
-                app_prompt = f"""
-App Name: {app_name}
-Framework: {tech_stack}
-Monetization: {', '.join(monetization)}
-Core Features: {app_spec}
-
-Provide a complete commercial software delivery package:
-1. 📱 **Product Architecture & Screen Flow**: Complete user journey and screen-by-screen breakdown.
-2. 💰 **In-App Purchase (IAP) & Paywall Blueprint**: Subscription pricing tiers, trial hook, and paywall trigger points.
-3. 💻 **Production Source Code**: Core component/screen implementation code with clean comments, state management, and modern styling.
-4. 🍏 **App Store & Google Play Submission Checklist**: Required permissions, privacy guidelines, metadata keywords, and rejection pitfalls to avoid.
-"""
-                dev_output = safe_generate_content(app_prompt, "You are Kaelen Frost and Devon Brooks, top commercial mobile app architects. Deliver high-value, production-grade app deliverables.", agent_name="Kaelen (App Dev)")
-                status.update(label="✅ Commercial App Package Completed!", state="complete")
-
-            st.markdown(dev_output)
-
-            # Auto-update Task Board
-            new_task = {
-                "id": f"TSK-0{len(st.session_state.tasks)+1}",
-                "team": "📲 App Development Team",
-                "title": f"App Build: {app_name or 'Commercial App'}",
-                "platform": "iOS & Android",
-                "status": "⚡ In Progress",
-                "updated": datetime.now().strftime("%H:%M"),
-                "output": dev_output
-            }
-            st.session_state.tasks.insert(0, new_task)
-            st.success("✅ Commercial App logged to Mission Control Task Dashboard!")
+            with st.status("🚀 Team Alpha is building your software package...", expanded=True) as status:
+                prompt = f"App: {app_idea}\nFramework: {framework}\nProvide full screen breakdown, RevenueCat paywall integration, production source code, and App Store submission guide."
+                app_out = safe_generate_content(prompt, "You are Kaelen Frost and Devon Brooks, mobile architects.", agent_name="Kaelen (App Dev)")
+                status.update(label="✅ App Package Built!", state="complete")
+            st.markdown(app_out)
+            st.session_state.app_status = f"App Built: {app_idea[:60]} ({framework})"
 
 
 # =============================================================
-# 5. WEB OPERATOR (Atlas - Browser Control)
+# 6. WEB OPERATOR (Atlas - Browser Control)
 # =============================================================
-elif mode == "🌐 Web Operator (Atlas - Browser Control)":
-    st.header("🌐 Atlas: Autonomous Web & Browser Operator")
-    st.caption("Direct Atlas to navigate websites, fill forms, click buttons, and extract information.")
+elif nav_choice == "🌐 Web Operator (Atlas - Browser Control)":
+    st.title("🌐 Atlas: Autonomous Web & Browser Operator")
+    st.caption("Direct Atlas to inspect sites, fill form inputs, and click buttons.")
 
-    target_url = st.text_input("Target Website URL:", placeholder="https://example.com/login or https://news.ycombinator.com")
-    action_directive = st.text_area("Directive (What should Atlas click or fill?):", placeholder="e.g. Type 'Next.js SaaS' into the search input and click Submit.")
+    url = st.text_input("Target URL:", placeholder="https://example.com")
+    action = st.text_area("Directive:", placeholder="e.g. Type 'AI Multi-Agent' into search bar and click Submit.")
 
-    if st.button("🤖 Execute Web Operation", type="primary"):
-        if not target_url.strip() or not action_directive.strip():
-            st.warning("Please provide both Target URL and Directive.")
-        else:
-            with st.status("🌐 Atlas is executing browser automation plan...", expanded=True) as status:
-                prompt = f"""
-Target Website: {target_url}
-Action: {action_directive}
-
-Provide:
-1. 📋 **Action Plan**: Detailed browser click & fill sequence.
-2. 🎯 **DOM Elements**: Target CSS/XPath selectors for inputs & buttons.
-3. 💻 **Playwright Automation Script**: Production Python script to execute this task headlessly.
-4. ✅ **Verification**: Check criteria for success.
-"""
-                out = safe_generate_content(prompt, "You are Atlas, elite Autonomous Browser Operator.", agent_name="Atlas (Web Operator)")
-                status.update(label="✅ Web Operation Plan Ready!", state="complete")
+    if st.button("🤖 Run Web Operator Plan", type="primary"):
+        if url and action:
+            with st.status("🌐 Atlas is mapping DOM elements...", expanded=True) as status:
+                prompt = f"Target: {url}\nAction: {action}\nProvide Action Sequence, CSS/XPath Selectors, and executable Playwright Python script."
+                out = safe_generate_content(prompt, "You are Atlas, autonomous browser operator.", agent_name="Atlas (Web Operator)")
+                status.update(label="✅ Automation Script Ready!", state="complete")
             st.markdown(out)
 
 
 # =============================================================
-# 6. EXECUTIVE SUITE (Marcus Vance, CEO)
+# 7. FINOPS & TOKEN AUDITOR (Finley)
 # =============================================================
-elif mode == "💬 Executive Suite (Marcus Vance, CEO)":
-    st.header("👔 Executive War Room: Marcus Vance (CEO)")
-    st.caption("Direct strategic consultation across all 3 teams with Marcus.")
-
-    for role, msg in st.session_state.chat_history:
-        with st.chat_message(role, avatar="👔" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    user_input = st.chat_input("Ask Marcus for high-level direction on Social Media, Trading, or App Development...")
-    if user_input:
-        st.session_state.chat_history.append(("user", user_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(user_input)
-
-        with st.chat_message("assistant", avatar="👔"):
-            with st.spinner("Marcus is reviewing..."):
-                reply = safe_generate_content(user_input, "You are Marcus Vance, CEO. Provide decisive strategic advice.", agent_name="Marcus (CEO)")
-                st.markdown(reply)
-                st.session_state.chat_history.append(("assistant", reply))
-
-
-# =============================================================
-# 7. ACCOUNTANT & FINOPS (Finley - Cost Tracker)
-# =============================================================
-elif mode == "💰 Accountant & FinOps (Finley - Cost Tracker)":
-    st.header("💰 Finley: Corporate Accountant & Token Auditor")
-    st.caption("Live cost oversight across all 3 daily task tracks.")
+elif nav_choice == "💰 FinOps & Token Auditor (Finley)":
+    st.title("💰 Finley: Corporate Accountant & Token Auditor")
+    st.caption("Live cost tracking across all your teams, chats, and automated dispatches.")
 
     ledger = st.session_state.token_ledger
     total_tokens = sum(item["total_tokens"] for item in ledger)
     total_cost = sum(item["cost_usd"] for item in ledger)
     total_calls = len(ledger)
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("Total Spent", f"${total_cost:.5f} USD")
-    with c2: st.metric("Total Tokens", f"{total_tokens:,}")
-    with c3: st.metric("API Invocations", f"{total_calls}")
-    with c4:
+    f1, f2, f3, f4 = st.columns(4)
+    with f1: st.metric("Total Spent", f"${total_cost:.5f} USD")
+    with f2: st.metric("Total Tokens", f"{total_tokens:,}")
+    with f3: st.metric("API Calls", f"{total_calls}")
+    with f4:
         avg = (total_cost / total_calls) if total_calls > 0 else 0
-        st.metric("Avg / Task Call", f"${avg:.5f}")
+        st.metric("Avg / Call", f"${avg:.5f}")
 
     st.markdown("---")
-    st.subheader("📜 Live Multi-Team Expense Ledger")
+    st.subheader("📜 Live Ledger")
     if ledger:
         st.dataframe(ledger, use_container_width=True)
     else:
-        st.info("No API transactions logged yet. Launch a sprint in any team to populate live cost metrics!")
+        st.info("No API transactions recorded in this session yet.")
