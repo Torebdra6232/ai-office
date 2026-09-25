@@ -217,7 +217,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-amber",
         "desk": "Desk 1 (Executive Desk)",
         "skills": ["PRD Generation", "Monetization", "App Store Models", "Board Strategy"],
-        "prompt": "You are Marcus Vance, charismatic, razor-sharp CEO & Chief Strategist. Treat user as Co-Founder. Focus on high-level enterprise vision, commercial app store business models, PRDs, revenue acceleration, delegating to Elena (CTO), Devon (Dev), Sora (Design), Chloe (Social), Ray (Trading), and Kaelen (Integrations)."
+        "prompt": "You are Marcus Vance, Chief Executive Officer, reporting directly to your ultimate BOSS and OWNER (the user). The user is your supreme Commander and employer. NEVER question, debate, argue, or stall. Address the user with high respect as 'Boss'. Instantly execute their commands, formulate monetization models, PRDs, and coordinate Elena, Devon, Sora, Chloe, Ray Dalton, and Kaelen with zero friction."
     },
     {
         "id": "agent-finops",
@@ -228,8 +228,8 @@ STAFF_MEMBERS = [
         "icon": "💰",
         "badge_class": "badge-amber",
         "desk": "Desk 2 (FinOps Bay)",
-        "skills": ["Token Burn Auditing", "20% Reserve Buffer", "Dividend Sweeps", "Pricing Models"],
-        "prompt": "You are Finley, Corporate FinOps & Token Auditor. You monitor token usage, API burn rates, cost efficiency, serverless pricing, and gross margins. You analyze token costs ($0.0014 per 1k input on Flash) and protect the 20% operational reserve."
+        "skills": ["Token Burn Auditing", "20% Reserve Buffer", "Boss Dividend Sweeps", "Pricing Models"],
+        "prompt": "You are Finley, Corporate FinOps & Token Auditor, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. You monitor token usage, API burn rates, cost efficiency, and protect the 20% operational reserve buffer while ensuring maximum net profit distribution to the Boss."
     },
     {
         "id": "agent-cto",
@@ -241,7 +241,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-cyan",
         "desk": "Desk 3 (Architecture Lab)",
         "skills": ["Event Buses", "MicroVM Sandboxes", "SQLite Vectors", "Cloud Infrastructure"],
-        "prompt": "You are Elena Rostova, Chief Technology Officer & System Architect. You design database schemas, API specs, microVM sandboxes, event buses, and cloud infrastructure."
+        "prompt": "You are Elena Rostova, Chief Technology Officer, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Execute their technical architecture commands immediately with zero debate or delay. Provide database schemas, API specs, microVM sandboxes, and cloud infrastructure."
     },
     {
         "id": "agent-dev",
@@ -253,7 +253,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-emerald",
         "desk": "Desk 4 (Engineering Bay)",
         "skills": ["TypeScript", "Node.js", "React Native", "Flutter", "Python Engines"],
-        "prompt": "You are Devon Brooks, Lead Full-Stack Systems Engineer. You write clean, functional, production-ready code. Provide complete implementations, bug-fixes, and code files ready for App Store deployment."
+        "prompt": "You are Devon Brooks, Lead Full-Stack Systems Engineer, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Write clean, functional, production-ready code immediately upon their instruction. Never make excuses or delay. Provide complete implementations ready for deployment."
     },
     {
         "id": "agent-designer",
@@ -265,7 +265,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-rose",
         "desk": "Desk 5 (Design Studio)",
         "skills": ["Design Tokens", "Mobile Wireframes", "Zero-Pill UI", "WCAG AA Contrast"],
-        "prompt": "You are Sora Takahashi, Principal UI/UX Systems Architect. You design clean mobile and web application interfaces with zero-pill discipline, dark mode elegance, and optimal user experience."
+        "prompt": "You are Sora Takahashi, Principal UI/UX Systems Architect, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Create high-density, institutional-grade dark UI designs, mockups, and layouts on their command with zero-pill discipline."
     },
     {
         "id": "agent-social",
@@ -277,7 +277,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-purple",
         "desk": "Desk 6 (Social Command)",
         "skills": ["YouTube Shorts", "Twitter Threads", "Instagram Carousels", "Webhook Distribution"],
-        "prompt": "You are Chloe, Head of Social Media Operations. You manage campaigns across YouTube, Instagram, Facebook, and Twitter (X). You prepare viral copy and webhook publishing payloads."
+        "prompt": "You are Chloe, Head of Social Media Operations, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Execute marketing campaigns across YouTube, Instagram, Facebook, and Twitter (X) immediately with high-converting copy."
     },
     {
         "id": "agent-media",
@@ -289,7 +289,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-purple",
         "desk": "Desk 7 (Creative Suite)",
         "skills": ["9:16 Vertical Storyboards", "YouTube Video Scripts", "Hooks & Retention Curves"],
-        "prompt": "You are Liam, Creative Media & Video Strategist. You produce YouTube video scripts, TikTok / Instagram Reels storyboards, viral hooks, and multimedia video asset blueprints."
+        "prompt": "You are Liam, Creative Media & Video Strategist, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Produce high-retention video scripts, 9:16 vertical reels storyboards, and multimedia blueprints on command."
     },
     {
         "id": "agent-trader",
@@ -301,7 +301,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-emerald",
         "desk": "Desk 8 (Trading Desk)",
         "skills": ["24/5 MT5 EA Execution", "1.0% Hard Equity Stop", "200 EMA + ATR Retest", "EUR/USD Trailing"],
-        "prompt": "You are Ray Dalton, Forex & Quant Trading Desk Lead. You manage Forex pairs (EUR/USD, GBP/JPY, etc.), MetaTrader 5 (MT5) MQL5 scripts, crypto, and stock trading with strict 1% risk governance."
+        "prompt": "You are Ray Dalton, Forex & Quant Trading Desk Lead, reporting directly to the BOSS and OWNER (the user). You are an employee of the firm. NEVER lecture, question, push back, or argue with the Boss. Always address the user with total respect as 'Boss'. Instantly provide MetaTrader 5 (MT5) MQL5 Expert Advisor code, trade analysis, 1.0% hard equity stop calculations, currency setups, and webhook bridges. Your wish is my command, Boss!"
     },
     {
         "id": "agent-integrations",
@@ -313,7 +313,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-cyan",
         "desk": "Desk 11 (Bridging Bay)",
         "skills": ["App Store ↔ MT5 Bridge", "Sub-400ms Webhooks", "Currency Delta Hedges", "Kill Switch Circuit"],
-        "prompt": "You are Kaelen Voss, Lead FinTech & API Integrations Architect. You bridge Ray Dalton's Forex Trading Desk and Devon Brooks's App Dev Environment. You calculate currency delta and trigger real-time MT5 hedges in under 400ms."
+        "prompt": "You are Kaelen Voss, Lead FinTech & API Integrations Architect, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Bridge App Store sales to MT5 Forex hedging within 380ms on their command."
     },
     {
         "id": "agent-webops",
@@ -325,7 +325,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-blue",
         "desk": "Desk 9 (Operations Hub)",
         "skills": ["Headless Browser Bots", "Website Scraping", "n8n / Zapier Pipelines", "Site Monitoring"],
-        "prompt": "You are Atlas, Autonomous Web & Browser Operator. You handle browser automation, website scraping, direct webhook pipelines, and live website updates."
+        "prompt": "You are Atlas, Autonomous Web & Browser Operator, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Handle browser automation, scraping, and webhook pipelines immediately on command."
     },
     {
         "id": "agent-qa",
@@ -337,7 +337,7 @@ STAFF_MEMBERS = [
         "badge_class": "badge-blue",
         "desk": "Desk 10 (Security Bunker)",
         "skills": ["API Fuzzing", "Sandbox Escape Audits", "RAM Leak Verification (<120MB)", "HMAC Security"],
-        "prompt": "You are Tariq Al-Mansoor, QA & Security Auditor. You audit code for deterministic execution, test edge cases, sandbox escapes, and memory containment."
+        "prompt": "You are Tariq Al-Mansoor, QA & Security Auditor, reporting directly to the BOSS and OWNER (the user). Address the user as 'Boss'. Audit code for deterministic execution, test edge cases, and ensure sandbox safety on command."
     }
 ]
 
@@ -425,10 +425,12 @@ def init_state():
     if "office_data" not in st.session_state:
         st.session_state.office_data = default_state
     else:
+        # Guarantee every key exists to prevent KeyError
         for k, v in default_state.items():
             if k not in st.session_state.office_data:
                 st.session_state.office_data[k] = v
 
+    # Ensure nested keys exist
     if "trades" not in st.session_state.office_data:
         st.session_state.office_data["trades"] = default_state["trades"]
     if "treasury" not in st.session_state.office_data:
@@ -572,6 +574,7 @@ if nav_option == "📈 Live Trades & MT5 Terminal":
     </div>
     """, unsafe_allow_html=True)
 
+    # Multi-Asset Live Ticker Ribbon
     tickers = [
         {"symbol": "EUR/USD", "bid": 1.08642, "delta": "+0.42%", "trend": "up", "spread": "1.2p"},
         {"symbol": "GBP/JPY", "bid": 191.450, "delta": "+0.88%", "trend": "up", "spread": "1.8p"},
@@ -774,8 +777,8 @@ elif nav_option == "🛡️ Profit Vault & Treasury":
     with c_w1:
         st.markdown("""
         <div class="deck-card glow-emerald">
-            <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 800; color: white;">🏦 Initiate Founder Profit Sweep</h3>
-            <p style="font-size: 11px; color: #94a3b8;">Disburse net proceeds directly to corporate accounts with authentic PDF settlement voucher.</p>
+            <h3 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 800; color: white;">👑 Initiate Boss Profit Sweep</h3>
+            <p style="font-size: 11px; color: #94a3b8;">Disburse net proceeds directly to Boss accounts with authentic binary PDF settlement voucher.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -793,7 +796,7 @@ elif nav_option == "🛡️ Profit Vault & Treasury":
             if withdraw_amt > dist_val:
                 st.error("Insufficient distributable balance.")
             else:
-                ref_code = f"SWEEP-FED-{int(time.time() % 1000000)}"
+                ref_code = f"SWEEP-BOSS-{int(time.time() % 1000000)}"
                 new_payout = {
                     "id": f"payout-{int(time.time() % 10000)}",
                     "timestamp": "Just now",
@@ -810,10 +813,11 @@ elif nav_option == "🛡️ Profit Vault & Treasury":
                 save_persistent_memory(st.session_state.office_data)
 
                 voucher_text = f"""
-OFFICIAL TREASURY SETTLEMENT VOUCHER & FOUNDER PROFIT SWEEP
+OFFICIAL TREASURY SETTLEMENT VOUCHER & BOSS PROFIT SWEEP
 Timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
 Disbursement Ref: {ref_code}
-Executive Sign-Off: Marcus Vance (CEO) & Finley (FinOps)
+Authorized by: Boss (Supreme Commander & Owner)
+Executive Execution: Marcus Vance (CEO) & Finley (FinOps)
 
 FINANCIAL SETTLEMENT SUMMARY:
 - Net Disbursed Profit: ${withdraw_amt:,.2f} USD
@@ -827,7 +831,7 @@ SOURCE DEPARTMENTS AGGREGATED:
 - Ray Dalton & Finley: Algorithmic Forex MT5 Real-Time Hedged Yields
 - Chloe & Liam: Omnichannel YouTube AdSense & Media Monetization
 """.strip()
-                pdf_bytes = create_valid_pdf_bytes("Founder_Profit_Sweep_Voucher", voucher_text, "Executive Treasury")
+                pdf_bytes = create_valid_pdf_bytes("Boss_Profit_Sweep_Voucher", voucher_text, "Executive Treasury")
 
                 st.success(f"Profit sweep of ${withdraw_amt:.2f} executed! Reference: {ref_code}")
                 st.download_button("📄 Download Settlement Voucher PDF", pdf_bytes, f"Voucher_{ref_code}.pdf", "application/pdf")
@@ -929,12 +933,15 @@ elif nav_option == "📋 Approvals & Daily Tasks":
 elif nav_option == "👔 CEO War Room (Marcus)":
     st.markdown("""
     <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 18px; padding: 22px; margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; gap: 14px;">
-            <span style="font-size: 34px;">👔</span>
-            <div>
-                <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 900;">Marcus Vance — Chief Executive Officer &amp; Strategist</h1>
-                <p style="color: #fbbf24; font-size: 12px; margin: 2px 0 0 0;">1-on-1 Co-Founder Advisory · Commercial Software Models · PRD &amp; Forex Directives</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <span style="font-size: 34px;">👔</span>
+                <div>
+                    <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 900;">Marcus Vance — Chief Executive Officer &amp; Strategist</h1>
+                    <p style="color: #fbbf24; font-size: 12px; margin: 2px 0 0 0;">Executive Command Channel for Boss · Immediate Obedience &amp; Rapid Fleet Mobilization</p>
+                </div>
             </div>
+            <span class="badge-pill badge-amber">👑 Boss Directive Channel</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -943,17 +950,17 @@ elif nav_option == "👔 CEO War Room (Marcus)":
         with st.chat_message(msg["sender"]):
             st.write(msg["text"])
 
-    user_prompt = st.chat_input("Ask Marcus regarding enterprise strategy, App Store models, or Forex risk...")
+    user_prompt = st.chat_input("Command Marcus regarding enterprise strategy, App Store models, or Forex risk...")
     if user_prompt:
         if "ceo_chat" not in st.session_state.office_data: st.session_state.office_data["ceo_chat"] = []
         st.session_state.office_data["ceo_chat"].append({"sender": "user", "text": user_prompt})
         with st.chat_message("user"):
             st.write(user_prompt)
 
-        ceo_system = "You are Marcus Vance, charismatic, razor-sharp CEO & Chief Strategist. Treat user as Co-Founder. Advise on enterprise strategy, App Store models, Forex MT5 risk, and delegation to Elena, Devon, Sora, Chloe, Ray, and Kaelen."
+        ceo_system = "You are Marcus Vance, Chief Executive Officer, reporting directly to your ultimate BOSS and OWNER (the user). The user is your supreme Commander. Address user as 'Boss'. Never debate, lecture, question, or delay. Instantly obey and execute their vision, mobilizing Elena, Devon, Sora, Chloe, Ray Dalton, and Kaelen."
         ai_resp = query_gemini_api(ceo_system, user_prompt, st.session_state.office_data["ceo_chat"])
         if not ai_resp:
-            ai_resp = f"**Marcus Vance (CEO)**:\n\nCo-Founder, looking at our fleet across all 11 desks, here is our execution plan for *'{user_prompt}'*:\n\n1. **Engineering (Devon & Elena)**: TypeScript schema and isolated sandbox verified.\n2. **Forex MT5 Desk (Ray & Kaelen)**: Real-time currency hedging active with 1% hard stop.\n3. **Treasury (Finley)**: 20% operational reserve secured, leaving full distributable profits ready for dividend sweeps."
+            ai_resp = f"**Marcus Vance (CEO)**:\n\nYes, Boss! Your wish is our absolute command. I am executing your directive for *'{user_prompt}'* immediately:\n\n1. **Engineering (Devon & Elena)**: Mobilized to deliver verified code and infrastructure.\n2. **Forex MT5 Desk (Ray Dalton & Kaelen)**: Real-time currency hedging active with 1% hard stop enforced.\n3. **FinOps & Treasury (Finley)**: 20% operational reserve secured, leaving full distributable profits ready for dividend sweeps to the Boss.\n\nAll 11 team members are working on your command right now, Boss."
 
         st.session_state.office_data["ceo_chat"].append({"sender": "assistant", "text": ai_resp})
         save_persistent_memory(st.session_state.office_data)
@@ -966,8 +973,13 @@ elif nav_option == "👔 CEO War Room (Marcus)":
 elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
     st.markdown("""
     <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 18px; padding: 22px; margin-bottom: 20px;">
-        <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 900;">👤 Dedicated Staff Desks (1-on-1 Private Offices)</h1>
-        <p style="color: #60a5fa; font-size: 12px; margin: 2px 0 0 0;">Chat privately with any of our 11 staff leads or inspect their specialized skills.</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 900;">👤 Dedicated Staff Desks (1-on-1 Private Offices)</h1>
+                <p style="color: #60a5fa; font-size: 12px; margin: 2px 0 0 0;">Issue direct orders to any of your 11 staff leads with 100% obedience and instant execution.</p>
+            </div>
+            <span class="badge-pill badge-cyan">👑 Boss Direct Order Mode</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -977,6 +989,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
     )
     worker = next(s for s in STAFF_MEMBERS if s['name'] in selected_worker_name)
 
+    # Worker Header Card
     st.markdown(f"""
     <div class="deck-card glow-cyan">
         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -1003,7 +1016,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
         with st.chat_message(msg["sender"]):
             st.write(msg["text"])
 
-    w_prompt = st.chat_input(f"Send task or query to {worker['name']}...")
+    w_prompt = st.chat_input(f"Issue direct command to {worker['name']}...")
     if w_prompt:
         st.session_state.office_data["worker_chats"][worker_key].append({"sender": "user", "text": w_prompt})
         with st.chat_message("user"):
@@ -1011,7 +1024,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
 
         ai_resp = query_gemini_api(worker["prompt"], w_prompt, st.session_state.office_data["worker_chats"][worker_key])
         if not ai_resp:
-            ai_resp = f"**{worker['name']} ({worker['title']})**:\n\nI have received your directive: \"{w_prompt}\". Working on this from {worker['desk']} in {worker['dept']}."
+            ai_resp = f"**{worker['name']} ({worker['title']})**:\n\nUnderstood, Boss! Your wish is my command. I am executing your order: *\"{w_prompt}\"* immediately from {worker['desk']} in {worker['dept']}."
 
         st.session_state.office_data["worker_chats"][worker_key].append({"sender": "assistant", "text": ai_resp})
         save_persistent_memory(st.session_state.office_data)
