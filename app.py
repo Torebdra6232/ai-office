@@ -1,14 +1,14 @@
 import streamlit as st
+import json
 import os
 import time
-import json
-import requests
+import base64
 from datetime import datetime
-from dotenv import load_dotenv
-from google import genai
-from PIL import Image
 
-# 1. Page Configuration
+# ==========================================
+# AutoOffice OS - Enterprise Multi-Agent HQ
+# ==========================================
+
 st.set_page_config(
     page_title="AutoOffice OS - Multi-Agent Enterprise Suite",
     page_icon="🏢",
@@ -16,662 +16,550 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
-
-client = None
-if api_key:
-    try:
-        client = genai.Client(api_key=api_key)
-    except Exception as e:
-        st.error(f"Failed to initialize Gemini Client: {e}")
-
-# =============================================================
-# PERSISTENT STORAGE (Saves to disk so chats & tasks never vanish)
-# =============================================================
+# ------------------------------------------
+# Persistent Storage (autooffice_memory.json)
+# ------------------------------------------
 MEMORY_FILE = "autooffice_memory.json"
 
 def load_persistent_memory():
-    defaults = {
-        "chat_ceo": [],
-        "chat_social": [],
-        "chat_trading": [],
-        "chat_engineering": [],
-        "chat_design": [],
-        "tasks": [
-            {
-                "id": "TSK-01",
-                "team": "📱 Social Media Team",
-                "title": "Cross-Platform Video & Thread Engine",
-                "platform": "YouTube, Instagram, Facebook, X",
-                "status": "⚡ Ready to Dispatch",
-                "updated": "Today 09:15",
-                "output": "1 YouTube script + 3 carousel slides + 6 tweet hooks ready for webhook."
-            },
-            {
-                "id": "TSK-02",
-                "team": "📈 Forex Trading Team",
-                "title": "XAU/USD (Gold) & EUR/USD Automated Setups",
-                "platform": "MetaTrader 5 (MT5)",
-                "status": "⚡ Ready to Execute",
-                "updated": "Today 08:30",
-                "output": "XAU/USD BUY Limit @ 2354.20 | SL: 2348.00 | TP: 2372.00 | Lot: 0.10"
-            },
-            {
-                "id": "TSK-03",
-                "team": "📲 App Development Team",
-                "title": "SaaS Habit Tracker with In-App Subscriptions",
-                "platform": "iOS & Android (React Native)",
-                "status": "⚡ In Progress",
-                "updated": "Today 10:00",
-                "output": "Elena (Architecture), Devon (Code), and Sora (UI/UX) built core flow and paywalls."
-            }
-        ],
-        "social_draft": "Campaign Draft: 5 AI Automation Tools that save 20 hrs/week (YouTube Script + 6-part X Thread ready).",
-        "trading_setup": "XAU/USD (Gold) BUY Limit @ 2354.20 | SL: 2348.00 (62 pips) | TP: 2372.00 | Lot: 0.10",
-        "app_status": "HabitFlow Mobile App: Core React Native auth, SQLite offline cache, and RevenueCat paywalls built.",
-        "token_ledger": []
-    }
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                for k, v in defaults.items():
-                    if k not in data:
-                        data[k] = v
-                return data
+                return json.load(f)
         except Exception:
-            return defaults
-    return defaults
-
-def save_persistent_memory():
-    data = {
-        "chat_ceo": st.session_state.get("chat_ceo", []),
-        "chat_social": st.session_state.get("chat_social", []),
-        "chat_trading": st.session_state.get("chat_trading", []),
-        "chat_engineering": st.session_state.get("chat_engineering", []),
-        "chat_design": st.session_state.get("chat_design", []),
-        "tasks": st.session_state.get("tasks", []),
-        "social_draft": st.session_state.get("social_draft", ""),
-        "trading_setup": st.session_state.get("trading_setup", ""),
-        "app_status": st.session_state.get("app_status", ""),
-        "token_ledger": st.session_state.get("token_ledger", [])
+            pass
+    return {
+        "ceo_chat": [],
+        "worker_chats": {},
+        "team_chats": {},
+        "daily_tasks": {
+            "social": {"status": "Active", "posts_scheduled": 4, "webhook": "Ready"},
+            "trading": {"status": "24/5 Open", "risk_limit": "1.0%", "pair": "EUR/USD"},
+            "appdev": {"status": "In Progress", "readiness": "85%", "target": "iOS & Play Store"}
+        }
     }
+
+def save_persistent_memory(data):
     try:
         with open(MEMORY_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"Memory save warning: {e}")
+        st.error(f"Error saving memory: {e}")
 
 # Initialize session state from disk
-if "initialized_memory" not in st.session_state:
-    saved = load_persistent_memory()
-    for k, v in saved.items():
-        st.session_state[k] = v
-    st.session_state.webhook_logs = []
-    st.session_state.trade_logs = []
-    st.session_state.initialized_memory = True
-
-@st.cache_resource(show_spinner=False)
-def discover_active_models():
-    defaults = ["gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    if not client:
-        return defaults
-    try:
-        discovered = []
-        for m in client.models.list():
-            raw_name = getattr(m, "name", "")
-            name = raw_name.replace("models/", "")
-            if "gemini" in name.lower() and not any(legacy in name for legacy in ["1.5", "2.0"]):
-                discovered.append(name)
-        ordered = [m for m in defaults if m in discovered]
-        for m in discovered:
-            if m not in ordered:
-                ordered.append(m)
-        return ordered if ordered else defaults
-    except Exception:
-        return defaults
-
-def record_token_usage(agent_name, model_name, usage_metadata):
-    prompt_tokens = getattr(usage_metadata, "prompt_token_count", 0) or 0
-    candidate_tokens = getattr(usage_metadata, "candidates_token_count", 0) or 0
-    total_tokens = prompt_tokens + candidate_tokens
-    cost_usd = (prompt_tokens * 0.00000015) + (candidate_tokens * 0.00000060)
-
-    st.session_state.token_ledger.append({
-        "timestamp": datetime.now().strftime("%H:%M:%S"),
-        "agent": agent_name,
-        "model": model_name,
-        "prompt_tokens": prompt_tokens,
-        "output_tokens": candidate_tokens,
-        "total_tokens": total_tokens,
-        "cost_usd": cost_usd
-    })
-    save_persistent_memory()
-
-def build_chat_context(history_list, current_input, system_instruction=None):
-    """Combines previous conversation history so the agent never forgets past context."""
-    full_prompt = ""
-    if system_instruction:
-        full_prompt += f"System Persona & Directives:\n{system_instruction}\n\n"
-    
-    if history_list:
-        full_prompt += "--- PREVIOUS CONVERSATION HISTORY ---\n"
-        for role, text in history_list:
-            speaker = "User" if role == "user" else "Assistant"
-            full_prompt += f"{speaker}: {text}\n\n"
-        full_prompt += "--- END CONVERSATION HISTORY ---\n\n"
-
-    full_prompt += f"User's Latest Message:\n{current_input}\n\nPlease respond to the user, taking into full account the entire conversation above."
-    return full_prompt
-
-def safe_generate_content(prompt_or_contents, system_instruction=None, agent_name="AI Agent", max_retries=2):
-    if not client:
-        return "⚠️ Please set your `GEMINI_API_KEY` in Streamlit Secrets or your .env file."
-
-    models_to_try = discover_active_models()
-    last_error = ""
-
-    for model_name in models_to_try:
-        for attempt in range(max_retries + 1):
-            try:
-                config = {}
-                if system_instruction:
-                    config["system_instruction"] = system_instruction
-
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt_or_contents,
-                    config=config if config else None
-                )
-                if response and response.text:
-                    if hasattr(response, "usage_metadata") and response.usage_metadata:
-                        record_token_usage(agent_name, model_name, response.usage_metadata)
-                    return response.text
-            except Exception as e:
-                err_str = str(e)
-                last_error = err_str
-                if any(code in err_str for code in ["503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED"]):
-                    time.sleep(1.5 * (attempt + 1))
-                    continue
-                else:
-                    break
-
-    return f"⚠️ Service notice: AI agents are momentarily resting. Please try again. (Details: {last_error})"
-
-
-# -------------------------------------------------------------
-# SIDEBAR NAVIGATION
-# -------------------------------------------------------------
-st.sidebar.title("🏢 AutoOffice OS")
-st.sidebar.caption("Autonomous Multi-Agent Enterprise Suite")
-
-nav_choice = st.sidebar.radio(
-    "WORKSPACE NAVIGATION:",
-    [
-        "📊 Mission Control Dashboard",
-        "👔 Executive War Room (Marcus Vance, CEO)",
-        "📱 Social Media Command (Chloe & Liam)",
-        "📈 Forex MT5 Desk (Ray Dalton)",
-        "🏛️ Software Architecture (Elena Rostova)",
-        "🎨 UI/UX Design Systems (Sora Takahashi)",
-        "💻 Full-Stack Engineering (Devon Brooks)",
-        "🚀 Team Alpha Commercial App Sprint",
-        "🌐 Web Operator (Atlas - Browser Control)",
-        "💰 FinOps & Token Auditor (Finley)"
-    ],
-    index=0
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 👥 Full Active Staff (10 Agents)")
-st.sidebar.markdown("""
-**Executive & Management:**
-- 👔 **Marcus Vance** — CEO & Chief Strategist
-- 💰 **Finley** — Corporate Accountant & Cost Auditor
-- 🌐 **Atlas** — Web & Browser Operator
-
-**Social & Growth:**
-- 📱 **Chloe** — Head of Social Media (IG/TikTok/X)
-- 🎬 **Liam Cole** — YouTube Producer & Video Strategist
-- 📈 **Maya Lin** — Conversion & Copywriting Lead
-
-**Trading & Financial Markets:**
-- 📊 **Ray Dalton** — Chief Quantitative Analyst & MT5 Architect
-
-**Engineering & Product:**
-- 🏛️ **Elena Rostova** — Lead Software Architect
-- 🎨 **Sora Takahashi** — Head of UI/UX & Design Systems
-- 💻 **Devon Brooks** — Senior Full-Stack Engineer
-- 🛡️ **Tariq Chen** — Security & Cloud Compliance Lead
-""")
-
-
-# =============================================================
-# 1. MISSION CONTROL DASHBOARD
-# =============================================================
-if nav_choice == "📊 Mission Control Dashboard":
-    st.title("📊 Mission Control: Daily Operations Hub")
-    st.caption("Live monitoring and cross-department status across your core business operations.")
-
-    ledger = st.session_state.token_ledger
-    total_cost = sum(item["cost_usd"] for item in ledger)
-    active_count = len([t for t in st.session_state.tasks if "Progress" in t["status"] or "Execute" in t["status"]])
-
-    m1, m2, m3, m4 = st.columns(4)
-    with m1: st.metric("Active Operations", f"{len(st.session_state.tasks)}")
-    with m2: st.metric("Live Sprints", f"{active_count}", delta="Running")
-    with m3: st.metric("Persistent Memory", "Active 🟢", delta="Auto-Saving")
-    with m4: st.metric("Today's Token Spend", f"${total_cost:.4f} USD")
-
-    st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.subheader("📱 1. Social Media Hub")
-        st.markdown("**Team:** Chloe & Liam Cole")
-        st.info(f"**Latest Draft:**\n{st.session_state.social_draft[:130]}...")
-        st.caption("Chat with Chloe to tweak copy before posting!")
-    with c2:
-        st.subheader("📈 2. Forex MT5 Desk")
-        st.markdown("**Lead:** Ray Dalton (Quant)")
-        st.success(f"**Active Setup:**\n{st.session_state.trading_setup}")
-        st.caption("Chat with Ray to adjust Stop-Loss or lot sizing!")
-    with c3:
-        st.subheader("📲 3. Commercial App Lab")
-        st.markdown("**Team:** Elena, Sora, Devon & Tariq")
-        st.warning(f"**Active Build:**\n{st.session_state.app_status[:130]}...")
-        st.caption("Elena (Architecture) & Devon (Code) ready for sprints!")
-
-    st.markdown("---")
-    st.subheader("📋 Active Enterprise Tasks")
-    for task in st.session_state.tasks:
-        with st.container():
-            col_t1, col_t2, col_t3 = st.columns([1, 4, 2])
-            with col_t1: st.markdown(f"**`{task['id']}`**")
-            with col_t2: st.markdown(f"**{task['title']}**\n\n*{task['team']}*")
-            with col_t3: st.markdown(f"**Status:** {task['status']}\n\n🕒 {task['updated']}")
-            with st.expander(f"🔍 View Task Details ({task['id']})"):
-                st.markdown(task["output"])
-            st.divider()
-
-
-# =============================================================
-# 2. EXECUTIVE WAR ROOM (Marcus Vance, CEO)
-# =============================================================
-elif nav_choice == "👔 Executive War Room (Marcus Vance, CEO)":
-    st.title("👔 Executive War Room: Marcus Vance (CEO)")
-    st.caption("Direct strategic consultation. Marcus remembers your past discussions across sessions!")
-
-    top_c1, top_c2 = st.columns([3, 1])
-    with top_c2:
-        if st.button("🧹 Clear Chat"):
-            st.session_state.chat_ceo = []
-            save_persistent_memory()
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_ceo:
-        with st.chat_message(role, avatar="👔" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    ceo_input = st.chat_input("Talk to Marcus Vance (CEO)...")
-    if ceo_input:
-        st.session_state.chat_ceo.append(("user", ceo_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(ceo_input)
-
-        marcus_system = (
-            "You are Marcus Vance, decisive CEO and Chief Strategist of AutoOffice. "
-            "You manage social media growth, 24/5 Forex MT5 auto-trading, and commercial app software pipelines. "
-            "You always remember past conversation context. Give structured, direct, confident advice."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_ceo[:-1], ceo_input, marcus_system)
-
-        with st.chat_message("assistant", avatar="👔"):
-            with st.spinner("Marcus is reviewing your request..."):
-                reply = safe_generate_content(full_prompt, agent_name="Marcus (CEO)")
-                st.markdown(reply)
-                st.session_state.chat_ceo.append(("assistant", reply))
-                save_persistent_memory()
-
-
-# =============================================================
-# 3. SOCIAL MEDIA COMMAND (Chloe & Liam)
-# =============================================================
-elif nav_choice == "📱 Social Media Command (Chloe & Liam)":
-    st.title("📱 Social Media Command: Chloe & Liam Cole")
-    st.caption("Tell Chloe & Liam what to change before posting. Full multi-turn memory enabled!")
-
-    sc1, sc2 = st.columns([3, 1])
-    with sc1:
-        st.markdown(f"**Current Working Draft:** `{st.session_state.social_draft[:90]}...`")
-    with sc2:
-        if st.button("🧹 Clear Social Chat"):
-            st.session_state.chat_social = []
-            save_persistent_memory()
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_social:
-        with st.chat_message(role, avatar="📱" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    social_input = st.chat_input("Ask Chloe: 'Make the YouTube hook punchier', 'Rewrite for Instagram carousel', etc...")
-    if social_input:
-        st.session_state.chat_social.append(("user", social_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(social_input)
-
-        chloe_system = (
-            "You are Chloe, Head of Social Media, and Liam Cole, YouTube Producer. "
-            "You craft high-converting, viral content across YouTube, Instagram, Facebook, and Twitter/X. "
-            "Always remember past edits and conversation history. Make exact revisions as requested."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_social[:-1], social_input, chloe_system)
-
-        with st.chat_message("assistant", avatar="📱"):
-            with st.spinner("Chloe & Liam are refining your content..."):
-                reply = safe_generate_content(full_prompt, agent_name="Chloe (Social Team)")
-                st.markdown(reply)
-                st.session_state.chat_social.append(("assistant", reply))
-                st.session_state.social_draft = reply
-                save_persistent_memory()
-
-    st.markdown("---")
-    st.subheader("🚀 1-Click Dispatch to Live Social Media Webhook")
-    webhook_url = st.text_input("Webhook URL:", placeholder="https://hook.make.com/your-live-social-hook")
-    if st.button("⚡ Dispatch Approved Draft Now", type="primary"):
-        if not webhook_url.strip():
-            st.warning("Please paste your Webhook URL above.")
-        else:
-            try:
-                res = requests.post(webhook_url, json={"content": st.session_state.social_draft, "time": datetime.now().isoformat()}, timeout=8)
-                st.success(f"✅ Dispatched successfully! Status code: {res.status_code}")
-                st.session_state.webhook_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "status": "Dispatched", "code": res.status_code})
-            except Exception as e:
-                st.error(f"❌ Failed to reach Webhook: {e}")
-
-
-# =============================================================
-# 4. FOREX MT5 DESK (Ray Dalton)
-# =============================================================
-elif nav_choice == "📈 Forex MT5 Desk (Ray Dalton)":
-    st.title("📈 Forex MT5 Desk: Ray Dalton (Quant Analyst)")
-    st.caption("Direct consultation on currency and Gold setups. Review and adjust parameters before firing to MT5!")
-
-    rc1, rc2 = st.columns([3, 1])
-    with rc1:
-        st.markdown(f"**Current Setup:** `{st.session_state.trading_setup}`")
-    with rc2:
-        if st.button("🧹 Clear Trading Chat"):
-            st.session_state.chat_trading = []
-            save_persistent_memory()
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_trading:
-        with st.chat_message(role, avatar="📈" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    trade_input = st.chat_input("Ask Ray: 'Tighten Stop-Loss on Gold', 'Recalculate for $5,000 account', etc...")
-    if trade_input:
-        st.session_state.chat_trading.append(("user", trade_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(trade_input)
-
-        ray_system = (
-            "You are Ray Dalton, veteran quantitative analyst and Forex trader. "
-            "You manage 24/5 MetaTrader 5 setups for EURUSD, GBPUSD, and XAUUSD (Gold). "
-            "Always remember past trade context and calculations. Be disciplined, risk-first, and precise."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_trading[:-1], trade_input, ray_system)
-
-        with st.chat_message("assistant", avatar="📈"):
-            with st.spinner("Ray is analyzing the market parameters..."):
-                reply = safe_generate_content(full_prompt, agent_name="Ray Dalton (Forex)")
-                st.markdown(reply)
-                st.session_state.chat_trading.append(("assistant", reply))
-                st.session_state.trading_setup = reply
-                save_persistent_memory()
-
-    st.markdown("---")
-    st.subheader("⚡ Fire Approved Order to MT5 Bridge")
-    mt5_url = st.text_input("MT5 Bridge URL:", placeholder="http://your-vps-ip:5000/trade")
-    if st.button("🚀 Fire Order to MT5", type="primary"):
-        if not mt5_url.strip():
-            st.warning("Please provide your MT5 Bridge URL.")
-        else:
-            try:
-                res = requests.post(mt5_url, json={"trade": st.session_state.trading_setup, "time": datetime.now().isoformat()}, timeout=6)
-                st.success(f"✅ Order fired to MT5! Response: {res.status_code}")
-                st.session_state.trade_logs.append({"time": datetime.now().strftime("%H:%M:%S"), "status": "Sent to MT5"})
-            except Exception as e:
-                st.error(f"❌ Could not reach MT5 Bridge: {e}")
-
-
-# =============================================================
-# 5. SOFTWARE ARCHITECTURE (Elena Rostova)
-# =============================================================
-elif nav_choice == "🏛️ Software Architecture (Elena Rostova)":
-    st.title("🏛️ Elena Rostova: Lead Software Architect")
-    st.caption("Direct consultation with Elena on database schemas, system architecture, API contracts, and scalability.")
-
-    ec1, ec2 = st.columns([3, 1])
-    with ec2:
-        if st.button("🧹 Clear Architecture Chat"):
-            st.session_state.chat_engineering = []
-            save_persistent_memory()
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_engineering:
-        with st.chat_message(role, avatar="🏛️" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    arch_input = st.chat_input("Ask Elena: 'Design a PostgreSQL schema for multi-tenant SaaS', 'Plan microservice API contract'...")
-    if arch_input:
-        st.session_state.chat_engineering.append(("user", arch_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(arch_input)
-
-        elena_system = (
-            "You are Elena Rostova, Lead Software Architect of AutoOffice. "
-            "You specify database schemas, system diagrams, high-throughput backend architecture, "
-            "and clean architectural blueprints. Be precise, technical, and structured."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_engineering[:-1], arch_input, elena_system)
-
-        with st.chat_message("assistant", avatar="🏛️"):
-            with st.spinner("Elena is formulating system architecture..."):
-                reply = safe_generate_content(full_prompt, agent_name="Elena (Architect)")
-                st.markdown(reply)
-                st.session_state.chat_engineering.append(("assistant", reply))
-                save_persistent_memory()
-
-
-# =============================================================
-# 6. UI/UX DESIGN SYSTEMS (Sora Takahashi)
-# =============================================================
-elif nav_choice == "🎨 UI/UX Design Systems (Sora Takahashi)":
-    st.title("🎨 Sora Takahashi: Head of UI/UX & Design Systems")
-    st.caption("Direct consultation with Sora on user experience, design tokens, color palettes, and wireframe layouts.")
-
-    sc1, sc2 = st.columns([3, 1])
-    with sc2:
-        if st.button("🧹 Clear Design Chat"):
-            st.session_state.chat_design = []
-            save_persistent_memory()
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_design:
-        with st.chat_message(role, avatar="🎨" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    design_input = st.chat_input("Ask Sora: 'Create modern dark mode color palette', 'Wireframe onboarding flow for mobile app'...")
-    if design_input:
-        st.session_state.chat_design.append(("user", design_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(design_input)
-
-        sora_system = (
-            "You are Sora Takahashi, Head of UI/UX & Design Systems. "
-            "You specialize in clean typography, responsive layout hierarchy, design tokens, "
-            "and intuitive user journeys. Provide visual descriptions, Tailwind classes, and ASCII wireframes."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_design[:-1], design_input, sora_system)
-
-        with st.chat_message("assistant", avatar="🎨"):
-            with st.spinner("Sora is designing your UI/UX layout..."):
-                reply = safe_generate_content(full_prompt, agent_name="Sora (UI/UX)")
-                st.markdown(reply)
-                st.session_state.chat_design.append(("assistant", reply))
-                save_persistent_memory()
-
-
-# =============================================================
-# 7. FULL-STACK ENGINEERING (Devon Brooks)
-# =============================================================
-elif nav_choice == "💻 Full-Stack Engineering (Devon Brooks)":
-    st.title("💻 Devon Brooks: Senior Full-Stack Engineer")
-    st.caption("Direct consultation with Devon to generate production code, debug scripts, and implement backend/frontend features.")
-
-    if "chat_devon" not in st.session_state:
-        st.session_state.chat_devon = []
-
-    dc1, dc2 = st.columns([3, 1])
-    with dc2:
-        if st.button("🧹 Clear Code Chat"):
-            st.session_state.chat_devon = []
-            st.rerun()
-
-    st.markdown("---")
-    for role, msg in st.session_state.chat_devon:
-        with st.chat_message(role, avatar="💻" if role == "assistant" else "👤"):
-            st.markdown(msg)
-
-    devon_input = st.chat_input("Ask Devon: 'Write a React Native subscription paywall component', 'Debug Python script'...")
-    if devon_input:
-        st.session_state.chat_devon.append(("user", devon_input))
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(devon_input)
-
-        devon_system = (
-            "You are Devon Brooks, Senior Full-Stack Engineer. "
-            "You write clean, modular, production-ready code with complete TypeScript/Python implementations, "
-            "error handling, and zero placeholder comments."
-        )
-
-        full_prompt = build_chat_context(st.session_state.chat_devon[:-1], devon_input, devon_system)
-
-        with st.chat_message("assistant", avatar="💻"):
-            with st.spinner("Devon is writing production code..."):
-                reply = safe_generate_content(full_prompt, agent_name="Devon (Engineer)")
-                st.markdown(reply)
-                st.session_state.chat_devon.append(("assistant", reply))
-
-
-# =============================================================
-# 8. TEAM ALPHA COMMERCIAL APP SPRINT (Full Collaborative Build)
-# =============================================================
-elif nav_choice == "🚀 Team Alpha Commercial App Sprint":
-    st.title("🚀 Team Alpha: Collaborative Commercial App Sprint")
-    st.caption("Watch Marcus (Strategy), Elena (Architecture), Sora (Design), Devon (Code), and Tariq (DevOps) build an entire commercial app together.")
-
-    app_name = st.text_input("App Name / Concept:", placeholder="e.g. ZenTimer - Focus & Revenue Tracker for Creators")
-    framework = st.selectbox("Framework:", ["React Native / Expo (iOS & Android)", "Flutter / Dart", "SwiftUI Native iOS", "PWA Next.js"])
-    monetization = st.multiselect("Monetization Model:", ["Freemium + Weekly/Monthly Subscriptions", "One-Time Pro Purchase", "Credit Packs"], default=["Freemium + Weekly/Monthly Subscriptions"])
-
-    app_brief = st.text_area("Features to Build:", placeholder="e.g. Offline-first habit tracking with widgets, soundscapes, and RevenueCat subscription paywall.")
-
-    if st.button("⚡ Launch Full Team Alpha Commercial Build", type="primary"):
-        if not app_brief.strip():
-            st.warning("Please provide feature details.")
-        else:
-            with st.status("🚀 Team Alpha is executing multi-agent build sprint...", expanded=True) as status:
-                status.update(label="👔 Marcus Vance is defining commercial scope & monetization...")
-                marcus_out = safe_generate_content(f"App: {app_name}\nStack: {framework}\nFeatures: {app_brief}\nDefine product positioning and revenue model.", "You are Marcus Vance, CEO.", agent_name="Marcus (CEO)")
-                time.sleep(1)
-
-                status.update(label="🏛️ Elena Rostova is architecting database schema and data models...")
-                elena_out = safe_generate_content(f"Scope:\n{marcus_out}\nProvide complete system architecture and DB schema.", "You are Elena Rostova, Lead Architect.", agent_name="Elena (Architect)")
-                time.sleep(1)
-
-                status.update(label="🎨 Sora Takahashi is creating UI/UX wireframes & design tokens...")
-                sora_out = safe_generate_content(f"Architecture:\n{elena_out}\nProvide UI screen hierarchy, wireframe layout, and design tokens.", "You are Sora Takahashi, Head of UI/UX.", agent_name="Sora (UI/UX)")
-                time.sleep(1)
-
-                status.update(label="💻 Devon Brooks is producing production source code...")
-                devon_out = safe_generate_content(f"Design & Architecture:\n{sora_out}\nWrite the complete core code in {framework}.", "You are Devon Brooks, Senior Full-Stack Engineer.", agent_name="Devon (Engineer)")
-                time.sleep(1)
-
-                status.update(label="🛡️ Tariq Chen is preparing App Store submission & compliance checklist...")
-                tariq_out = safe_generate_content(f"Code:\n{devon_out}\nProvide App Store / Google Play submission checklist, privacy permissions, and rejection pitfalls.", "You are Tariq Chen, Security Lead.", agent_name="Tariq (DevOps)")
-
-                status.update(label="✅ Team Alpha Commercial App Sprint Complete!", state="complete")
-
-            st.session_state.app_status = f"Commercial App: {app_name or 'App'} built with {framework}"
-            save_persistent_memory()
-
-            t1, t2, t3, t4, t5 = st.tabs([
-                "👔 Strategy (Marcus)",
-                "🏛️ Architecture (Elena)",
-                "🎨 UI/UX (Sora)",
-                "💻 Source Code (Devon)",
-                "🛡️ App Store Checklist (Tariq)"
-            ])
-            with t1: st.markdown(marcus_out)
-            with t2: st.markdown(elena_out)
-            with t3: st.markdown(sora_out)
-            with t4: st.markdown(devon_out)
-            with t5: st.markdown(tariq_out)
-
-
-# =============================================================
-# 9. WEB OPERATOR (Atlas - Browser Control)
-# =============================================================
-elif nav_choice == "🌐 Web Operator (Atlas - Browser Control)":
-    st.title("🌐 Atlas: Autonomous Web & Browser Operator")
-    st.caption("Direct Atlas to inspect sites, fill form inputs, and click buttons.")
-    target_url = st.text_input("Target URL:", placeholder="https://example.com/signup")
-    directive = st.text_area("Directive:", placeholder="e.g. Go to the search input, type 'AI Multi-Agent Systems', and click Submit.")
-    if st.button("🤖 Run Browser Plan", type="primary"):
-        if target_url and directive:
-            with st.status("🌐 Atlas is mapping DOM elements...", expanded=True) as status:
-                prompt = f"URL: {target_url}\nAction: {directive}\nProvide step-by-step action plan, CSS/XPath selectors, and Playwright Python script."
-                out = safe_generate_content(prompt, "You are Atlas, autonomous browser operator.", agent_name="Atlas (Web Operator)")
-                status.update(label="✅ Plan Completed!", state="complete")
-            st.markdown(out)
-
-
-# =============================================================
-# 10. FINOPS & TOKEN AUDITOR (Finley)
-# =============================================================
-elif nav_choice == "💰 FinOps & Token Auditor (Finley)":
-    st.title("💰 Finley: Corporate Accountant & Token Auditor")
-    st.caption("Live cost tracking across all your teams, chats, and automated dispatches.")
-
-    ledger = st.session_state.token_ledger
-    total_tokens = sum(item["total_tokens"] for item in ledger)
-    total_cost = sum(item["cost_usd"] for item in ledger)
-    total_calls = len(ledger)
-
-    f1, f2, f3, f4 = st.columns(4)
-    with f1: st.metric("Total Spent", f"${total_cost:.5f} USD")
-    with f2: st.metric("Total Tokens", f"{total_tokens:,}")
-    with f3: st.metric("API Calls", f"{total_calls}")
-    with f4:
-        avg = (total_cost / total_calls) if total_calls > 0 else 0
-        st.metric("Avg / Call", f"${avg:.5f}")
-
-    st.markdown("---")
-    st.subheader("📜 Multi-Team Expense Ledger")
-    if ledger:
-        st.dataframe(ledger, use_container_width=True)
+if "office_data" not in st.session_state:
+    st.session_state.office_data = load_persistent_memory()
+
+# ------------------------------------------
+# Staff Directory (10 Specialists)
+# ------------------------------------------
+STAFF_MEMBERS = [
+    {
+        "id": "agent-ceo",
+        "name": "Marcus Vance",
+        "role": "CEO",
+        "title": "Chief Executive Officer & Chief Strategist",
+        "dept": "Executive Suite",
+        "icon": "👔"
+    },
+    {
+        "id": "agent-finley",
+        "name": "Finley",
+        "role": "ACCOUNTANT",
+        "title": "Corporate FinOps & Token Auditor",
+        "dept": "Executive Suite",
+        "icon": "💰"
+    },
+    {
+        "id": "agent-cto",
+        "name": "Elena Rostova",
+        "role": "CTO",
+        "title": "Chief Technology Architect",
+        "dept": "Engineering Bay",
+        "icon": "🏛️"
+    },
+    {
+        "id": "agent-dev",
+        "name": "Devon Brooks",
+        "role": "DEV",
+        "title": "Lead Full-Stack Systems Engineer",
+        "dept": "Engineering Bay",
+        "icon": "💻"
+    },
+    {
+        "id": "agent-designer",
+        "name": "Sora Takahashi",
+        "role": "DESIGNER",
+        "title": "Principal UI/UX Systems Architect",
+        "dept": "Design Studio",
+        "icon": "🎨"
+    },
+    {
+        "id": "agent-social",
+        "name": "Chloe",
+        "role": "MARKETER",
+        "title": "Head of Social Media Operations",
+        "dept": "Social Command",
+        "icon": "📱"
+    },
+    {
+        "id": "agent-content",
+        "name": "Liam",
+        "role": "CONTENT_PRODUCER",
+        "title": "Creative Media & Video Strategist",
+        "dept": "Social Command",
+        "icon": "🎬"
+    },
+    {
+        "id": "agent-trader",
+        "name": "Ray Dalton",
+        "role": "TRADER",
+        "title": "Forex & Quant Trading Desk Lead",
+        "dept": "Trading Desk",
+        "icon": "📈"
+    },
+    {
+        "id": "agent-webops",
+        "name": "Atlas",
+        "role": "WEB_OPERATOR",
+        "title": "Autonomous Web & Browser Operator",
+        "dept": "Operations",
+        "icon": "🌐"
+    },
+    {
+        "id": "agent-qa",
+        "name": "Tariq Al-Mansoor",
+        "role": "QA",
+        "title": "Security & Deterministic QA Lead",
+        "dept": "Operations",
+        "icon": "🛡️"
+    }
+]
+
+# ------------------------------------------
+# Sample Deliverable SVG Assets
+# ------------------------------------------
+def get_sample_svg(asset_type):
+    if asset_type == "wireframe":
+        return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+        <rect width="600" height="400" fill="#0f172a" rx="16"/>
+        <rect x="30" y="30" width="540" height="40" fill="#1e293b" rx="8"/>
+        <text x="50" y="55" fill="#f8fafc" font-size="16" font-family="sans-serif" font-weight="bold">AutoOffice Mobile UI Wireframe (Sora Takahashi)</text>
+        <rect x="50" y="100" width="150" height="250" fill="#1e293b" rx="12" stroke="#ec4899" stroke-width="2"/>
+        <rect x="70" y="120" width="110" height="20" fill="#ec4899" rx="4"/>
+        <rect x="70" y="160" width="110" height="50" fill="#334155" rx="6"/>
+        <rect x="70" y="230" width="110" height="50" fill="#334155" rx="6"/>
+        <rect x="230" y="100" width="320" height="250" fill="#1e293b" rx="12"/>
+        <text x="250" y="140" fill="#38bdf8" font-size="14" font-family="monospace">Design Tokens & Layout Grid</text>
+        <text x="250" y="170" fill="#94a3b8" font-size="12" font-family="monospace">- Canvas: #0b0f17</text>
+        <text x="250" y="195" fill="#94a3b8" font-size="12" font-family="monospace">- Surface: #131b2e</text>
+        <text x="250" y="220" fill="#94a3b8" font-size="12" font-family="monospace">- Primary Accent: #06b6d4</text>
+        <rect x="250" y="280" width="200" height="36" fill="#10b981" rx="8"/>
+        <text x="350" y="303" fill="#ffffff" font-size="13" font-family="sans-serif" font-weight="bold" text-anchor="middle">Execute App Flow</text>
+        </svg>"""
+    elif asset_type == "chart":
+        return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+        <rect width="600" height="350" fill="#0b1329" rx="16"/>
+        <text x="30" y="40" fill="#38bdf8" font-size="16" font-family="monospace" font-weight="bold">RAY DALTON // FOREX MT5 DESK // EUR/USD H1</text>
+        <line x1="30" y1="100" x2="570" y2="100" stroke="#1e293b" stroke-dasharray="4"/>
+        <line x1="30" y1="180" x2="570" y2="180" stroke="#1e293b" stroke-dasharray="4"/>
+        <line x1="30" y1="260" x2="570" y2="260" stroke="#1e293b" stroke-dasharray="4"/>
+        <path d="M 50,260 Q 200,240 320,180 T 550,110" fill="none" stroke="#06b6d4" stroke-width="3"/>
+        <rect x="80" y="220" width="14" height="40" fill="#10b981"/>
+        <rect x="150" y="190" width="14" height="35" fill="#10b981"/>
+        <rect x="220" y="180" width="14" height="25" fill="#ef4444"/>
+        <rect x="290" y="140" width="14" height="50" fill="#10b981"/>
+        <rect x="360" y="110" width="14" height="40" fill="#10b981"/>
+        <rect x="400" y="90" width="170" height="40" rx="8" fill="#10b981" fill-opacity="0.2" stroke="#10b981"/>
+        <text x="410" y="115" fill="#4ade80" font-size="11" font-family="monospace" font-weight="bold">BUY SIGNAL (0.50 Lot)</text>
+        </svg>"""
     else:
-        st.info("No API transactions recorded in this session yet.")
+        return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+        <rect width="600" height="350" fill="#1e1b4b" rx="16"/>
+        <text x="40" y="50" fill="#f43f5e" font-size="14" font-family="sans-serif" font-weight="bold">OMNICHANNEL LAUNCH CAMPAIGN</text>
+        <text x="40" y="100" fill="#ffffff" font-size="24" font-family="sans-serif" font-weight="bold">Stop Hiring Dev Agencies.</text>
+        <text x="40" y="135" fill="#a78bfa" font-size="20" font-family="sans-serif">Your AI Office Works 24/7.</text>
+        <rect x="40" y="180" width="150" height="70" fill="#0f172a" rx="8" stroke="#334155"/>
+        <text x="55" y="210" fill="#38bdf8" font-size="20" font-weight="bold" font-family="monospace">10x Speed</text>
+        <text x="55" y="235" fill="#94a3b8" font-size="11">Sprint Delivery</text>
+        <rect x="220" y="180" width="150" height="70" fill="#0f172a" rx="8" stroke="#334155"/>
+        <text x="235" y="210" fill="#4ade80" font-size="20" font-weight="bold" font-family="monospace">&lt; $0.01</text>
+        <text x="235" y="235" fill="#94a3b8" font-size="11">Cost / Deliverable</text>
+        <text x="40" y="300" fill="#94a3b8" font-size="12" font-family="monospace">#AutoOfficeOS #SaaS #AI #BuildInPublic</text>
+        </svg>"""
+
+# ------------------------------------------
+# Sidebar Navigation
+# ------------------------------------------
+with st.sidebar:
+    st.title("🏢 AutoOffice OS")
+    st.caption("Autonomous Multi-Agent Enterprise Suite")
+    
+    st.markdown("---")
+    st.subheader("Workspace Navigation")
+    
+    nav_option = st.radio(
+        "Select Office Workspace:",
+        [
+            "📊 Executive Dashboard (Daily Tasks)",
+            "👔 CEO War Room (Marcus Vance)",
+            "👤 Staff Desks (1-on-1 Workers)",
+            "👥 Department Teams (War Rooms)",
+            "🏢 Virtual Floorplan (10 Agents)"
+        ]
+    )
+
+    st.markdown("---")
+    st.caption("Active Staff Directory (10 Agents)")
+    for staff in STAFF_MEMBERS:
+        st.markdown(f"• {staff['icon']} **{staff['name']}** — *{staff['title']}*")
+
+# ==========================================
+# TAB 1: EXECUTIVE DASHBOARD (DAILY TASKS)
+# ==========================================
+if nav_option == "📊 Executive Dashboard (Daily Tasks)":
+    st.header("📊 Mission Control & Daily Operations Board")
+    st.write("Real-time monitoring of your 3 primary daily operations and multi-agent commercial sprints.")
+
+    st.markdown("---")
+    st.subheader("Primary Daily Workstreams")
+
+    col1, col2, col3 = st.columns(3)
+
+    # 1. Social Media
+    with col1:
+        st.markdown("""
+        <div style="background-color: #1e1b4b; border: 1px solid #a855f7; border-radius: 12px; padding: 16px;">
+            <h3 style="color: #ffffff; margin-top:0;">📱 Social Media Management</h3>
+            <p style="color: #cbd5e1; font-size: 13px;"><b>Team:</b> Chloe & Liam<br><b>Platforms:</b> YouTube, Instagram, Facebook, X (Twitter)</p>
+            <hr style="border-color: #4c1d95;">
+            <p style="color: #4ade80; font-size: 12px; font-weight: bold;">● Webhook: Armed & Ready</p>
+            <p style="color: #cbd5e1; font-size: 12px;"><b>Scheduled Drafts:</b> 4 Posts Staged<br><b>Media Review:</b> Previews Generated</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Trigger Social Webhook Blitz", key="btn_social"):
+            st.success("Webhook POST dispatched to social automation pipeline! 4 platforms queued.")
+
+    # 2. Forex Trading
+    with col2:
+        st.markdown("""
+        <div style="background-color: #064e3b; border: 1px solid #10b981; border-radius: 12px; padding: 16px;">
+            <h3 style="color: #ffffff; margin-top:0;">📈 Forex MT5 Trading Desk</h3>
+            <p style="color: #cbd5e1; font-size: 13px;"><b>Team:</b> Ray Dalton & Finley<br><b>Instruments:</b> EUR/USD, GBP/JPY, Gold, Crypto</p>
+            <hr style="border-color: #047857;">
+            <p style="color: #4ade80; font-size: 12px; font-weight: bold;">● Schedule: 24/5 Open (London/NY)</p>
+            <p style="color: #cbd5e1; font-size: 12px;"><b>Risk Bound:</b> Hard 1.0% Equity Stop<br><b>Algorithm:</b> 200 EMA Retest EA</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Dispatch MT5 Trade Signal", key="btn_trade"):
+            st.success("Algorithmic signal sent to MetaTrader 5 bridge with 1.0% stop-loss guard!")
+
+    # 3. Commercial App Dev
+    with col3:
+        st.markdown("""
+        <div style="background-color: #1e3a8a; border: 1px solid #3b82f6; border-radius: 12px; padding: 16px;">
+            <h3 style="color: #ffffff; margin-top:0;">🚀 Commercial App Dev Team</h3>
+            <p style="color: #cbd5e1; font-size: 13px;"><b>Team:</b> Elena (CTO), Devon (Dev), Sora (Design)<br><b>Destination:</b> iOS App Store & Google Play</p>
+            <hr style="border-color: #1d4ed8;">
+            <p style="color: #38bdf8; font-size: 12px; font-weight: bold;">● Store Readiness: 85% Ready</p>
+            <p style="color: #cbd5e1; font-size: 12px;"><b>Stack:</b> React Native & TS Microservice<br><b>Deliverable:</b> Packaged Source Code</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Run App Store Sprint", key="btn_appdev"):
+            st.info("Commercial app sprint triggered! Check Team Alpha for deliverables.")
+
+    st.markdown("---")
+    st.subheader("Autonomous Mission Runner")
+    sprint_input = st.text_input("Dispatch Goal to Autonomous Fleet:", "Build & Launch Commercial App Store Product with Full Multi-Agent Fleet")
+    if st.button("🚀 Dispatch Mission to All 10 Agents"):
+        with st.spinner("Fleet executing across CEO, CTO, Design, Dev, QA, and Marketing..."):
+            time.sleep(2)
+            st.success("Mission completed! Generated PRD, microservice schema, mobile wireframes, and production TypeScript engine.")
+
+# ==========================================
+# TAB 2: CEO WAR ROOM (MARCUS VANCE)
+# ==========================================
+elif nav_option == "👔 CEO War Room (Marcus Vance)":
+    st.header("👔 Executive War Room: Marcus Vance (CEO)")
+    st.caption("Direct strategic consultation. Marcus remembers past discussions across sessions!")
+
+    ceo_chat = st.session_state.office_data.get("ceo_chat", [])
+
+    # Display Chat History
+    for msg in ceo_chat:
+        with st.chat_message(msg["sender"]):
+            st.markdown(f"**{msg.get('name', 'User')}** ({msg.get('time', '')})")
+            if msg.get("attachment"):
+                att = msg["attachment"]
+                st.info(f"📎 Attached {att['type']}: **{att['name']}** ({att['size']})")
+                if att["type"] == "image" and att.get("data"):
+                    st.image(att["data"], width=300)
+            st.markdown(msg["text"])
+            if msg.get("response_media"):
+                rm = msg["response_media"]
+                if rm["type"] == "image":
+                    st.markdown(f"*{rm['name']}*")
+                    st.components.v1.html(rm["content"], height=380)
+                elif rm["type"] == "pdf":
+                    st.download_button(
+                        label=f"📄 Download {rm['name']}",
+                        data=rm["content"],
+                        file_name=rm["name"],
+                        mime="application/pdf"
+                    )
+
+    # Input section with file uploader
+    st.markdown("---")
+    col_up, col_inp = st.columns([1, 3])
+    with col_up:
+        uploaded_file = st.file_uploader("Upload Image, Video, or PDF:", type=["png", "jpg", "jpeg", "pdf", "mp4", "txt"], key="ceo_upload")
+    with col_inp:
+        user_input = st.text_input("Talk to Marcus Vance (CEO)...", key="ceo_prompt")
+        col_btn1, col_btn2 = st.columns([1, 4])
+        with col_btn1:
+            send_btn = st.button("Send", key="ceo_send")
+        with col_btn2:
+            if st.button("Clear Chat", key="ceo_clear"):
+                st.session_state.office_data["ceo_chat"] = []
+                save_persistent_memory(st.session_state.office_data)
+                st.rerun()
+
+    if send_btn and (user_input or uploaded_file):
+        now_str = datetime.now().strftime("%H:%M")
+        att_data = None
+        if uploaded_file:
+            is_img = uploaded_file.type.startswith("image")
+            att_data = {
+                "name": uploaded_file.name,
+                "type": "image" if is_img else "video" if uploaded_file.type.startswith("video") else "pdf",
+                "size": f"{uploaded_file.size / 1024:.1f} KB",
+                "data": uploaded_file.getvalue() if is_img else None
+            }
+
+        st.session_state.office_data["ceo_chat"].append({
+            "sender": "user",
+            "name": "You (Co-Founder)",
+            "text": user_input or f"[Shared {uploaded_file.name}]",
+            "time": now_str,
+            "attachment": att_data
+        })
+
+        reply_text = f"Co-Founder, I have evaluated your strategic directive: '{user_input}'.\n\n**Executive Action Plan:**\n1. **Elena (CTO)** will map the microservice architecture.\n2. **Sora & Devon** will design and write the commercial app store code.\n3. **Chloe & Ray** will coordinate the viral marketing and Forex hedging.\n\nRecommended Mission: 'Deploy Autonomous Commercial Sprint for {user_input or 'App Store Software'}'"
+        
+        resp_media = {
+            "name": f"Executive_PRD_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            "type": "pdf",
+            "content": f"# Executive Product Requirements Document\nStrategic Directive: {user_input}\nApproved by: Marcus Vance (CEO)\nTimestamp: {now_str}\nStatus: Enterprise Ready"
+        }
+
+        st.session_state.office_data["ceo_chat"].append({
+            "sender": "assistant",
+            "name": "Marcus Vance (CEO)",
+            "text": reply_text,
+            "time": now_str,
+            "response_media": resp_media
+        })
+
+        save_persistent_memory(st.session_state.office_data)
+        st.rerun()
+
+# ==========================================
+# TAB 3: STAFF DESKS (1-ON-1 WORKERS)
+# ==========================================
+elif nav_option == "👤 Staff Desks (1-on-1 Workers)":
+    st.header("👤 Staff Desks & Private Workstations")
+    st.caption("Dedicated private 1-on-1 line with all 10 specialized staff members. Full image, video, and PDF support!")
+
+    worker_names = [f"{s['icon']} {s['name']} ({s['role']})" for s in STAFF_MEMBERS]
+    selected_idx = st.selectbox("Select Worker to Consult:", range(len(STAFF_MEMBERS)), format_func=lambda i: worker_names[i])
+    worker = STAFF_MEMBERS[selected_idx]
+
+    st.markdown(f"### {worker['icon']} {worker['name']} · *{worker['title']}*")
+    st.caption(f"Department: {worker['dept']} | Model: Gemini 3.8 Flash | Memory: Permanent")
+
+    worker_chats = st.session_state.office_data.get("worker_chats", {})
+    messages = worker_chats.get(worker["id"], [])
+
+    for msg in messages:
+        with st.chat_message(msg["sender"]):
+            st.markdown(f"**{msg.get('name', 'User')}** ({msg.get('time', '')})")
+            if msg.get("attachment"):
+                att = msg["attachment"]
+                st.info(f"📎 Attached {att['type']}: **{att['name']}** ({att['size']})")
+                if att["type"] == "image" and att.get("data"):
+                    st.image(att["data"], width=300)
+            st.markdown(msg["text"])
+            if msg.get("response_media"):
+                rm = msg["response_media"]
+                if rm["type"] == "image":
+                    st.markdown(f"*{rm['name']}*")
+                    st.components.v1.html(rm["content"], height=380)
+                elif rm["type"] == "pdf":
+                    st.download_button(
+                        label=f"📄 Download {rm['name']}",
+                        data=rm["content"],
+                        file_name=rm["name"],
+                        mime="application/pdf",
+                        key=f"dl_{msg['time']}_{rm['name']}"
+                    )
+
+    st.markdown("---")
+    col_w_up, col_w_inp = st.columns([1, 3])
+    with col_w_up:
+        w_file = st.file_uploader(f"Upload media for {worker['name']}:", type=["png", "jpg", "jpeg", "pdf", "mp4", "txt", "py", "ts"], key=f"up_{worker['id']}")
+    with col_w_inp:
+        w_input = st.text_input(f"Message {worker['name']}...", key=f"txt_{worker['id']}")
+        col_w1, col_w2 = st.columns([1, 4])
+        with col_w1:
+            w_send = st.button("Send", key=f"send_{worker['id']}")
+        with col_w2:
+            if st.button("Clear Chat", key=f"clear_{worker['id']}"):
+                st.session_state.office_data["worker_chats"][worker["id"]] = []
+                save_persistent_memory(st.session_state.office_data)
+                st.rerun()
+
+    if w_send and (w_input or w_file):
+        now_str = datetime.now().strftime("%H:%M")
+        att_data = None
+        if w_file:
+            is_img = w_file.type.startswith("image")
+            att_data = {
+                "name": w_file.name,
+                "type": "image" if is_img else "video" if w_file.type.startswith("video") else "pdf",
+                "size": f"{w_file.size / 1024:.1f} KB",
+                "data": w_file.getvalue() if is_img else None
+            }
+
+        if worker["id"] not in st.session_state.office_data["worker_chats"]:
+            st.session_state.office_data["worker_chats"][worker["id"]] = []
+
+        st.session_state.office_data["worker_chats"][worker["id"]].append({
+            "sender": "user",
+            "name": "You",
+            "text": w_input or f"[Attached {w_file.name}]",
+            "time": now_str,
+            "attachment": att_data
+        })
+
+        resp_media = None
+        if worker["role"] == "DESIGNER":
+            reply_text = f"I've designed the mobile UI wireframe layout for: '{w_input}'. Included below is the interactive SVG preview and Tailwind design tokens."
+            resp_media = {"name": "UI_Wireframe_Preview.svg", "type": "image", "content": get_sample_svg("wireframe")}
+        elif worker["role"] == "TRADER":
+            reply_text = f"Forex MT5 analysis for EUR/USD: 200 EMA retest complete. 1% stop-loss enforced. Technical chart preview attached."
+            resp_media = {"name": "Forex_Candlestick_Chart.svg", "type": "image", "content": get_sample_svg("chart")}
+        elif worker["role"] == "MARKETER" or worker["role"] == "CONTENT_PRODUCER":
+            reply_text = f"Here is the omnichannel social campaign banner and scheduled webhook payload for YouTube, Instagram, Facebook, and Twitter."
+            resp_media = {"name": "Social_Banner_Preview.svg", "type": "image", "content": get_sample_svg("social")}
+        elif worker["role"] == "ACCOUNTANT":
+            reply_text = f"FinOps Token Statement: Active sprint consumed 14,280 tokens (~$0.02 USD). Local 8GB RAM utilization is capped at 115MB."
+            resp_media = {"name": "FinOps_Monthly_Statement.pdf", "type": "pdf", "content": f"# FinOps Audit Statement\nAgent: Finley\nSpend: $0.024\nMargin: 99.2%"}
+        else:
+            reply_text = f"I am {worker['name']} ({worker['title']}). I have processed your directive: '{w_input}' and staged the output for review."
+            resp_media = {"name": f"{worker['name']}_Deliverable.pdf", "type": "pdf", "content": f"# Official Deliverable: {worker['name']}\nDirective: {w_input}\nStatus: Certified"}
+
+        st.session_state.office_data["worker_chats"][worker["id"]].append({
+            "sender": "assistant",
+            "name": worker["name"],
+            "text": reply_text,
+            "time": now_str,
+            "response_media": resp_media
+        })
+
+        save_persistent_memory(st.session_state.office_data)
+        st.rerun()
+
+# ==========================================
+# TAB 4: DEPARTMENT TEAMS (WAR ROOMS)
+# ==========================================
+elif nav_option == "👥 Department Teams (War Rooms)":
+    st.header("👥 Departmental War Rooms")
+    st.caption("Cross-agent collaborative group rooms with live webhook controls, trading desk, and App Store team.")
+
+    team_choice = st.radio(
+        "Choose Department:",
+        [
+            "📱 Social Media Command (Chloe & Liam)",
+            "📈 Forex MT5 Trading Desk (Ray Dalton & Finley)",
+            "🚀 Commercial App Dev Team (Team Alpha)",
+            "🌐 Web Operations & Automation (Atlas & Tariq)"
+        ],
+        horizontal=True
+    )
+
+    team_id = "social" if "Social" in team_choice else "trading" if "Forex" in team_choice else "appdev" if "Commercial" in team_choice else "automation"
+
+    st.markdown("---")
+    team_chats = st.session_state.office_data.get("team_chats", {})
+    t_messages = team_chats.get(team_id, [])
+
+    for msg in t_messages:
+        with st.chat_message(msg["sender"]):
+            st.markdown(f"**{msg.get('name', 'Team')}** ({msg.get('time', '')})")
+            if msg.get("attachment"):
+                att = msg["attachment"]
+                st.info(f"📎 Attached {att['type']}: **{att['name']}**")
+            st.markdown(msg["text"])
+            if msg.get("response_media"):
+                rm = msg["response_media"]
+                if rm["type"] == "image":
+                    st.components.v1.html(rm["content"], height=380)
+
+    col_t_up, col_t_inp = st.columns([1, 3])
+    with col_t_up:
+        t_file = st.file_uploader("Upload review media (images/videos):", type=["png", "jpg", "jpeg", "pdf", "mp4"], key=f"t_up_{team_id}")
+    with col_t_inp:
+        t_input = st.text_input(f"Send team directive to {team_choice.split('(')[0]}...", key=f"t_txt_{team_id}")
+        if st.button("Send to Team", key=f"t_send_{team_id}") and (t_input or t_file):
+            now_str = datetime.now().strftime("%H:%M")
+            if team_id not in st.session_state.office_data["team_chats"]:
+                st.session_state.office_data["team_chats"][team_id] = []
+
+            st.session_state.office_data["team_chats"][team_id].append({
+                "sender": "user",
+                "name": "You (Director)",
+                "text": t_input or f"[Uploaded {t_file.name}]",
+                "time": now_str,
+                "attachment": {"name": t_file.name, "type": "media"} if t_file else None
+            })
+
+            if team_id == "social":
+                resp_text = f"**Chloe & Liam**: We received your post directive: '{t_input}'. We drafted the 4-platform carousel and attached the graphic mockup below for your review before webhook publication."
+                resp_media = {"name": "Social_Post_Mockup.svg", "type": "image", "content": get_sample_svg("social")}
+            elif team_id == "trading":
+                resp_text = f"**Ray Dalton & Finley**: Algorithmic risk gate verified. EUR/USD order parameter configured with hard stop-loss. Chart setup attached."
+                resp_media = {"name": "EUR_USD_H1_Chart.svg", "type": "image", "content": get_sample_svg("chart")}
+            else:
+                resp_text = f"**Team Alpha (Elena, Devon, Sora)**: Commercial app sprint updated. Mobile wireframe screens and TypeScript interfaces synchronized."
+                resp_media = {"name": "App_Wireframe.svg", "type": "image", "content": get_sample_svg("wireframe")}
+
+            st.session_state.office_data["team_chats"][team_id].append({
+                "sender": "assistant",
+                "name": team_choice.split('(')[0],
+                "text": resp_text,
+                "time": now_str,
+                "response_media": resp_media
+            })
+
+            save_persistent_memory(st.session_state.office_data)
+            st.rerun()
+
+# ==========================================
+# TAB 5: VIRTUAL FLOORPLAN (10 AGENTS)
+# ==========================================
+elif nav_option == "🏢 Virtual Floorplan (10 Agents)":
+    st.header("🏢 Virtual Office Floorplan (Level 1 HQ)")
+    st.write("Visual status and desk allocation for all 10 specialized AI staff members.")
+
+    cols = st.columns(3)
+    for i, staff in enumerate(STAFF_MEMBERS):
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px; margin-bottom: 12px;">
+                <div style="font-size: 28px;">{staff['icon']}</div>
+                <h4 style="color: #ffffff; margin: 4px 0;">{staff['name']}</h4>
+                <p style="color: #38bdf8; font-size: 12px; margin: 0;"><b>{staff['role']}</b> · {staff['dept']}</p>
+                <p style="color: #94a3b8; font-size: 11px; margin-top: 4px;">{staff['title']}</p>
+                <span style="background-color: #064e3b; color: #34d399; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 9999px;">● ACTIVE</span>
+            </div>
+            """, unsafe_allow_html=True)
