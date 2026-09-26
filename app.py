@@ -488,11 +488,11 @@ def process_domain_fallback(role_id, role_name, agent_title, user_text):
     # Sora Takahashi (UI/UX Designer)
     if "designer" in role_id or "sora" in role_name.lower():
         if "wireframe" in lower or "design" in lower or "ui" in lower or "token" in lower:
-            return f"""**Sora Takahashi**: Design deliverable ready, Boss.
+            return """**Sora Takahashi**: Design deliverable ready, Boss.
 
 ```css
 /* Dark High-Density Design Tokens */
-:root {{
+:root {
   --bg-canvas: #090d16;
   --bg-card: rgba(15, 23, 42, 0.85);
   --border-subtle: rgba(56, 189, 248, 0.35);
@@ -500,16 +500,16 @@ def process_domain_fallback(role_id, role_name, agent_title, user_text):
   --text-primary: #f8fafc;
   --text-muted: #94a3b8;
   --radius-card: 14px;
-}}
+}
 ```
 Layout structured with WCAG AA compliance and zero-pill discipline."""
         else:
-            return f"**Sora Takahashi**: Understood, Boss. What screen, wireframe, or UI tokens should I design for you right now?"
+            return "**Sora Takahashi**: Understood, Boss. What screen, wireframe, or UI tokens should I design for you right now?"
 
     # Devon Brooks (Lead Engineer)
     elif "dev" in role_id or "devon" in role_name.lower():
         if "code" in lower or "api" in lower or "function" in lower or "typescript" in lower or "python" in lower:
-            return f"""**Devon Brooks**: Code deliverable ready, Boss.
+            return """**Devon Brooks**: Code deliverable ready, Boss.
 
 ```typescript
 // Production Event Router Endpoint
@@ -523,7 +523,7 @@ export async function handleExecutionWebhook(req: Request): Promise<Response> {
 ```
 Ready to commit and run in sandbox."""
         else:
-            return f"**Devon Brooks**: Ready for code execution, Boss. Name the feature, bug fix, or endpoint to build."
+            return "**Devon Brooks**: Ready for code execution, Boss. Name the feature, bug fix, or endpoint to build."
 
     # Elena Rostova (CTO)
     elif "cto" in role_id or "elena" in role_name.lower():
@@ -1227,7 +1227,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
     if worker_key not in st.session_state.office_data.get("worker_chats", {}):
         st.session_state.office_data["worker_chats"][worker_key] = []
 
-    for msg in st.session_state.office_data["worker_chats"][worker_key]:
+    for msg in st.session_data.get("worker_chats", {}).get(worker_key, []) if "session_data" in dir() else st.session_state.office_data["worker_chats"][worker_key]:
         msg_avatar = "👑" if msg.get("sender") == "user" else worker.get("icon", "👤")
         with st.chat_message(msg["sender"], avatar=msg_avatar):
             st.write(msg["text"])
