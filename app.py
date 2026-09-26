@@ -577,77 +577,103 @@ STAFF_MEMBERS = [
         "dept": "Operations",
         "icon": "🛡️",
         "badge_class": "badge-blue",
-        "desk": "Desk 10 (Security Bunker)",
-        "skills": [
-            "Security Penetration Audits",
-            "Unit / Integration Tests",
-            "API Fuzzing",
-            "HMAC Verification",
-            "Zero Memory Leaks",
-        ],
-        "prompt": (
-            "You are Tariq Al-Mansoor, QA & Security Lead. You report "
-            "directly to your Boss. STRICT MANDATE: Provide test suites, "
-            "security audit matrices, and honest pass/fail findings."
-        ),
-    },
-]
-
-
+       # ==============================================================================
+# Gemini AI Helper (Results-First, Short & Direct)
 # ==============================================================================
-# ROBUST STATE INITIALIZATION
-# ==============================================================================
+def get_gemini_api_key():
+    # 1. Check custom user input in session state
+    if st.session_state.get("custom_api_key"):
+        return st.session_state.get("custom_api_key").strip()
 
-MEMORY_FILE = "autooffice_memory.json"
+    # 2. Check Environment Variables
+    env_keys = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_KEY", "GEMINI_TOKEN", "API_KEY"]
+    for k in env_keys:
+        val = os.environ.get(k)
+        if val and val.strip():
+            return val.strip()
 
+    # 3. Check Streamlit Cloud Secrets (st.secrets) - flat and nested
+    secrets_obj = getattr(st, "secrets", None)
+    if secrets_obj:
+        for k in env_keys + [k.lower() for k in env_keys]:
+            try:
+                val = secrets_obj.get(k)
+                if val and isinstance(val, str) and val.strip():
+                    return val.strip()
+            except Exception:
+                pass
+        
+        # Check nested dicts like st.secrets["gemini"]["api_key"] or st.secrets["google"]["api_key"]
+        for section in ["gemini", "google", "default", "api"]:
+            try:
+                sec = secrets_obj.get(section, {})
+                if isinstance(sec, dict):
+                    for subk in ["api_key", "key", "token", "GEMINI_API_KEY"]:
+                        val = sec.get(subk)
+                        if val and isinstance(val, str) and val.strip():
+                            return val.strip()
+            except Exception:
+                pass
 
-def get_default_state():
-    return {
-        "ceo_chat": [],
-        "worker_chats": {},
-        "team_chats": {},
-        "treasury": {
-            "balance": 0.0,
-            "reserve": 0.0,
-            "income": 0.0,
-            "expenses": 0.0,
-            "payouts": 0.0,
-        },
-        "tasks": [],
-        "approvals": [],
-        "paper_positions": [],
-        "trade_history": [],
-        "webhooks": [],
-        "memory": [],
-        "selected_worker": "Marcus Vance",
-        "selected_team": "Engineering",
-        "selected_url": "https://example.com",
+    return ""
+
+def query_gemini_api(system_prompt, user_text, history_messages=[]):
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return None
+
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]
+    
+    # Build clean alternating history starting with 'user'
+    clean_contents = []
+    last_role = None
+    for m in history_messages[-6:]:
+        text_val = m.get("text", "").strip()
+        if not text_val:
+            continue
+        role = "user" if m.get("sender") == "user" else "model"
+        if role != last_role:
+            clean_contents.append({"role": role, "parts": [{"text": text_val}]})
+            last_role = role
+
+    if clean_contents and clean_contents[0]["role"] == "model":
+        clean_contents.pop(0)
+
+    if clean_contents and clean_contents[-1]["role"] == "user":
+        clean_contents.pop()
+
+    clean_contents.append({"role": "user", "parts": [{"text": user_text}]})
+
+    payload = {
+        "contents": clean_contents,
+        "systemInstruction": {"parts": [{"text": system_prompt + "\nSTRICT MANDATE: Answer the user directly, accurately, and contextually. Never give generic boilerplate answers."}]},
+        "generationConfig": {"temperature": 0.4}
     }
 
+    for model_name in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            headers = {"Content-Type": "application/json"}
+            if api_key.startswith("AQ.") or api_key.startswith("ya29."):
+                headers["Authorization"] = f"Bearer {api_key}"
 
-def init_state():
-    defaults = get_default_state()
-
-    for key, default_value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
-
-    if not isinstance(st.session_state.get("worker_chats"), dict):
-        st.session_state.worker_chats = {}
-
-    if not isinstance(st.session_state.get("team_chats"), dict):
-        st.session_state.team_chats = {}
-
-    if not isinstance(st.session_state.get("tasks"), list):
-        st.session_state.tasks = []
-
-    if not isinstance(st.session_state.get("approvals"), list):
-        st.session_state.approvals = []
-
-    if not isinstance(st.session_state.get("paper_positions"), list):
-        st.session_state.paper_positions = []
-
-    if not isinstance(st.session_state.get("trade_history"), list):
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        text_resp = parts[0]["text"]
+                        if "fictional" not in text_resp.lower() and "ai assistant" not in text_resp.lower():
+                            return text_resp
+        except Exception:
+            continue
+    return Nonet("trade_history"), list):
         st.session_state.trade_history = []
 
     if not isinstance(st.session_state.get("webhooks"), list):
