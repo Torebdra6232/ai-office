@@ -393,13 +393,7 @@ def get_default_state():
                 "status": "pending"
             }
         ],
-        "tasks": [
-            {"id": "TASK-101", "title": "Finalize Dark Mode UI Tokens & Component Library", "agent": "Sora Takahashi", "dept": "Design", "status": "completed", "progress": 100, "priority": "high"},
-            {"id": "TASK-102", "title": "Build Multi-Agent LLM Gateway & WebSocket Server", "agent": "Devon Brooks", "dept": "Engineering", "status": "in-progress", "progress": 80, "priority": "urgent"},
-            {"id": "TASK-103", "title": "Design Microservices Database Schemas & PostgreSQL DDL", "agent": "Elena Rostova", "dept": "Engineering", "status": "in-progress", "progress": 70, "priority": "high"},
-            {"id": "TASK-104", "title": "Draft 4-Platform Social Media Launch Campaign Copy", "agent": "Chloe", "dept": "Marketing", "status": "in-progress", "progress": 60, "priority": "medium"},
-            {"id": "TASK-105", "title": "Calibrate MT5 MQL5 EA for EUR/USD 1.0% Risk Gate", "agent": "Ray Dalton", "dept": "Trading Desk", "status": "completed", "progress": 100, "priority": "urgent"}
-        ]
+        "tasks": []
     }
 
 def init_state():
@@ -418,7 +412,7 @@ def init_state():
     if "approvals" not in st.session_state.office_data:
         st.session_state.office_data["approvals"] = default_state["approvals"]
     if "tasks" not in st.session_state.office_data:
-        st.session_state.office_data["tasks"] = default_state["tasks"]
+        st.session_state.office_data["tasks"] = []
     if "worker_chats" not in st.session_state.office_data:
         st.session_state.office_data["worker_chats"] = {}
     if "team_chats" not in st.session_state.office_data:
@@ -432,6 +426,24 @@ def save_persistent_memory(data):
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
     except Exception:
         pass
+
+def record_auto_task(agent_name, dept_name, task_title, deliverable_text=""):
+    tasks = st.session_state.office_data.get("tasks", [])
+    task_id = f"TASK-{len(tasks) + 101}"
+    new_task = {
+        "id": task_id,
+        "title": str(task_title)[:80],
+        "agent": agent_name,
+        "dept": dept_name,
+        "status": "completed",
+        "progress": 100,
+        "priority": "high",
+        "deliverable": deliverable_text,
+        "timestamp": datetime.utcnow().strftime('%H:%M:%S')
+    }
+    tasks.insert(0, new_task)
+    st.session_state.office_data["tasks"] = tasks
+    save_persistent_memory(st.session_state.office_data)
 
 # ==============================================================================
 # Gemini AI Helper (Results-First, Short & Direct)
@@ -1050,19 +1062,24 @@ elif nav_option == "📋 Approvals & Daily Tasks":
 
         if st.button("🚀 Assign Real Task to Agent", type="primary"):
             if new_task_title.strip():
+                ai_resp = query_gemini_api(chosen_member["prompt"], new_task_title.strip(), [])
+                if not ai_resp:
+                    ai_resp = process_domain_fallback(chosen_member["id"], chosen_member["name"], chosen_member["title"], new_task_title.strip())
                 new_t_id = f"TASK-{len(tasks) + 101}"
                 new_task_obj = {
                     "id": new_t_id,
                     "title": new_task_title.strip(),
                     "agent": chosen_member["name"],
                     "dept": chosen_member["dept"],
-                    "status": "in-progress" if new_task_progress < 100 else "completed",
+                    "status": "completed" if new_task_progress == 100 else "in-progress",
                     "progress": new_task_progress,
-                    "priority": new_task_priority
+                    "priority": new_task_priority,
+                    "deliverable": ai_resp,
+                    "timestamp": datetime.utcnow().strftime('%H:%M:%S')
                 }
                 tasks.insert(0, new_task_obj)
                 save_persistent_memory(st.session_state.office_data)
-                st.success(f"✓ Real task {new_t_id} assigned to {chosen_member['name']}!")
+                st.success(f"✓ Real task {new_t_id} assigned to {chosen_member['name']} and executed!")
                 st.rerun()
 
     c_appr, c_task = st.columns([5, 7])
@@ -1100,34 +1117,61 @@ elif nav_option == "📋 Approvals & Daily Tasks":
                         st.rerun()
 
     with c_task:
-        st.subheader("Active Real Tasks Board")
+        hdr_c1, hdr_c2 = st.columns([3, 2])
+        with hdr_c1:
+            st.subheader("Active Real Tasks Board")
+        with hdr_c2:
+            if tasks and st.button("🗑️ Clear All Tasks Board", key="btn_clear_all_tasks"):
+                st.session_state.office_data["tasks"] = []
+                save_persistent_memory(st.session_state.office_data)
+                st.rerun()
+
         if not tasks:
-            st.markdown("<div style='padding: 12px; color: #64748b; font-size: 12px; border: 1px dashed #334155; border-radius: 8px;'>No tasks created yet. Use the 'Create New Real Task' box above to assign tasks.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='padding: 20px; color: #64748b; font-size: 13px; text-align: center; border: 1px dashed #334155; border-radius: 12px;'>Board is clear! Chat with any agent or use 'Create New Real Task' above to start tasks.</div>", unsafe_allow_html=True)
+
         for idx, t in enumerate(tasks):
-            prog_color = "#34d399" if t["status"] == "completed" else "#fbbf24" if t["status"] == "waiting-approval" else "#38bdf8"
+            prog_val = t.get("progress", 100)
+            prog_color = "#34d399" if prog_val == 100 or t.get("status") == "completed" else "#38bdf8"
             st.markdown(f"""
-            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid #334155; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px;">
+            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid #334155; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 10px; color: #94a3b8; font-family: monospace;">{t['id']} · {t['dept']} · Priority: {t.get('priority', 'normal').upper()}</span>
-                    <span class="badge-pill" style="background: rgba(255,255,255,0.05); color: {prog_color}; border: 1px solid {prog_color}40;">{t['status'].upper()}</span>
+                    <span style="font-size: 10px; color: #94a3b8; font-family: monospace;">{t['id']} · {t['dept']} · Priority: {t.get('priority', 'HIGH').upper()}</span>
+                    <span class="badge-pill" style="background: rgba(255,255,255,0.05); color: {prog_color}; border: 1px solid {prog_color}40;">{t.get('status', 'in-progress').upper()}</span>
                 </div>
-                <div style="font-weight: 700; color: white; font-size: 13px; margin: 4px 0;">{t['title']}</div>
+                <div style="font-weight: 700; color: white; font-size: 14px; margin: 6px 0;">{t['title']}</div>
                 <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-top: 4px;">
-                    <span>Assigned: <strong style="color: #e2e8f0;">{t['agent']}</strong></span>
-                    <span style="font-family: monospace; color: #38bdf8;">Progress: {t['progress']}%</span>
+                    <span>Assigned: <strong style="color: #38bdf8;">{t['agent']}</strong></span>
+                    <span style="font-family: monospace; color: {prog_color}; font-weight: 700;">Progress: {prog_val}%</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden;">
+                    <div style="width: {prog_val}%; background: {prog_color}; height: 100%; border-radius: 4px;"></div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
-            c_act1, c_act2 = st.columns([1, 1])
+
+            if t.get("deliverable"):
+                with st.expander(f"📦 View Agent Deliverable ({t['id']})", expanded=False):
+                    st.code(t["deliverable"])
+                    deliv_bytes = create_valid_pdf_bytes(t["title"], t["deliverable"], t["agent"])
+                    st.download_button("📄 Download Deliverable PDF", deliv_bytes, f"{t['id']}_Deliverable.pdf", "application/pdf", key=f"dl_deliv_{t['id']}")
+
+            c_act1, c_act2, c_act3 = st.columns([1, 1, 1])
             with c_act1:
-                if t["status"] != "completed":
-                    if st.button(f"✓ Mark Done ({t['id']})", key=f"done_{t['id']}"):
+                if prog_val < 100:
+                    if st.button(f"➕ +25% ({t['id']})", key=f"adv_{t['id']}"):
+                        t["progress"] = min(100, prog_val + 25)
+                        if t["progress"] == 100:
+                            t["status"] = "completed"
+                        save_persistent_memory(st.session_state.office_data)
+                        st.rerun()
+            with c_act2:
+                if prog_val < 100:
+                    if st.button(f"✓ Complete ({t['id']})", key=f"done_{t['id']}"):
                         t["status"] = "completed"
                         t["progress"] = 100
                         save_persistent_memory(st.session_state.office_data)
                         st.rerun()
-            with c_act2:
+            with c_act3:
                 if st.button(f"🗑️ Delete ({t['id']})", key=f"del_{t['id']}"):
                     tasks.remove(t)
                     save_persistent_memory(st.session_state.office_data)
@@ -1170,6 +1214,7 @@ elif nav_option == "👔 CEO War Room (Marcus)":
             ai_resp = process_domain_fallback("ceo", "Marcus Vance", "CEO & Chief Strategist", user_prompt)
 
         st.session_state.office_data["ceo_chat"].append({"sender": "assistant", "text": ai_resp})
+        record_auto_task("Marcus Vance", "Executive Suite", user_prompt, ai_resp)
         save_persistent_memory(st.session_state.office_data)
         with st.chat_message("assistant", avatar="👔"):
             st.write(ai_resp)
@@ -1227,7 +1272,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
     if worker_key not in st.session_state.office_data.get("worker_chats", {}):
         st.session_state.office_data["worker_chats"][worker_key] = []
 
-    for msg in st.session_data.get("worker_chats", {}).get(worker_key, []) if "session_data" in dir() else st.session_state.office_data["worker_chats"][worker_key]:
+    for msg in st.session_state.office_data["worker_chats"][worker_key]:
         msg_avatar = "👑" if msg.get("sender") == "user" else worker.get("icon", "👤")
         with st.chat_message(msg["sender"], avatar=msg_avatar):
             st.write(msg["text"])
@@ -1243,6 +1288,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
             ai_resp = process_domain_fallback(worker["id"], worker["name"], worker["title"], w_prompt)
 
         st.session_state.office_data["worker_chats"][worker_key].append({"sender": "assistant", "text": ai_resp})
+        record_auto_task(worker["name"], worker["dept"], w_prompt, ai_resp)
         save_persistent_memory(st.session_state.office_data)
         with st.chat_message("assistant", avatar=worker.get("icon", "👤")):
             st.write(ai_resp)
@@ -1332,6 +1378,7 @@ elif nav_option == "👥 Department Teams":
                 ai_resp = f"[{dept_name} Action Log]: Directive registered. {dept_leads} executing now."
 
             st.session_state.office_data["team_chats"][team_chat_key].append({"sender": "assistant", "text": ai_resp})
+            record_auto_task(dept_leads, dept_name, t_prompt, ai_resp)
             save_persistent_memory(st.session_state.office_data)
             with st.chat_message("assistant", avatar="👥"):
                 st.write(ai_resp)
