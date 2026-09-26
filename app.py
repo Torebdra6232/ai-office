@@ -506,8 +506,8 @@ def record_auto_task(agent_name, dept_name, task_title, deliverable_text=""):
     exec_logs = [
         f"[{now_str}] 👔 CEO Marcus Vance: Objective parsed (\"{(str(task_title)[:60])}\"). Roadmap mapped & delegated to {agent_name}.",
         f"[{now_str}] ⚡ {agent_name} ({dept_name}): Generating primary execution payload & code deliverable.",
-        f"[{now_str}] 🛡️ QA Tariq Al-Mansoor: Security audit & syntax lint check PASSED. Zero vulnerabilities.",
-        f"[{now_str}] 💰 FinOps Finley: LLM token burn verified. Autonomous execution marked 100% COMPLETED."
+        f"[{now_str}] 🛡️ QA Tariq Al-Mansoor: Validation stage recorded; no automatic pass claim without test evidence.",
+        f"[{now_str}] 💰 FinOps Finley: Task recorded in the office ledger; no financial execution is implied."
     ]
 
     lower_title = str(task_title).lower()
@@ -583,28 +583,58 @@ if __name__ == "__main__":
 # Gemini AI Helper (Results-First, Short & Direct)
 # ==============================================================================
 def get_gemini_api_key():
+    """Resolve the Gemini key without ever exposing it in UI logs."""
+    try:
+        secret_key = st.secrets.get("GEMINI_API_KEY", "")
+    except Exception:
+        secret_key = ""
     return (
-        os.environ.get("GEMINI_API_KEY") or
-        getattr(st, "secrets", {}).get("GEMINI_API_KEY", "") or
-        st.session_state.get("custom_api_key", "")
+        os.environ.get("GEMINI_API_KEY", "")
+        or secret_key
+        or st.session_state.get("custom_api_key", "")
     )
 
-def query_gemini_api(system_prompt, user_text, history_messages=[]):
+
+def _extract_gemini_text(data):
+    """Safely collect all text parts from a Gemini response."""
+    out = []
+    for candidate in data.get("candidates", []) or []:
+        content = candidate.get("content", {}) or {}
+        for part in content.get("parts", []) or []:
+            if isinstance(part, dict) and part.get("text"):
+                out.append(str(part["text"]))
+    return "\n".join(out).strip() or None
+
+
+def query_gemini_api(system_prompt, user_text, history_messages=None, temperature=0.25):
+    """Reliable Gemini REST client with model fallback and clean history handling."""
     api_key = get_gemini_api_key()
     if not api_key:
         return None
 
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite"]
+    history_messages = history_messages or []
+    preferred = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    models = []
+    for model_name in [preferred, "gemini-3.6-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+        if model_name and model_name not in models:
+            models.append(model_name)
+
     contents = []
-    for m in history_messages[-6:]:
+    for m in history_messages[-10:]:
         role = "user" if m.get("sender") == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": m.get("text", "")}]})
-    contents.append({"role": "user", "parts": [{"text": user_text}]})
+        text_value = str(m.get("text", "")).strip()
+        if text_value:
+            contents.append({"role": role, "parts": [{"text": text_value[:12000]}]})
+    contents.append({"role": "user", "parts": [{"text": str(user_text)[:20000]}]})
 
     payload = {
         "contents": contents,
-        "systemInstruction": {"parts": [{"text": system_prompt + "\nSTRICT MANDATE: Do not just talk or ask questions. Immediately deliver the COMPLETE WORK DELIVERABLE (code, scripts, social campaigns, or trading strategies) in rich code/markdown blocks. Keep conversational text to 1 short sentence max."}]},
-        "generationConfig": {"temperature": 0.3}
+        "systemInstruction": {"parts": [{"text": str(system_prompt)}]},
+        "generationConfig": {
+            "temperature": temperature,
+            "topP": 0.9,
+            "maxOutputTokens": 4096
+        }
     }
 
     for model_name in models:
@@ -613,20 +643,150 @@ def query_gemini_api(system_prompt, user_text, history_messages=[]):
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                method="POST"
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        text_resp = parts[0]["text"]
-                        if "fictional" not in text_resp.lower() and "ai assistant" not in text_resp.lower():
-                            return text_resp
+                answer = _extract_gemini_text(data)
+                if answer:
+                    return answer
         except Exception:
             continue
     return None
+
+
+# ==============================================================================
+# AutoOffice Intelligence Layer
+# ==============================================================================
+BRAIN_VERSION = "2.0"
+
+ROLE_INTELLIGENCE = {
+    "agent-ceo": "strategy, prioritization, delegation, product decisions, concise executive communication",
+    "agent-designer": "UI/UX, interaction design, design systems, accessibility, user flows",
+    "agent-dev": "Python, TypeScript, React, APIs, debugging, implementation",
+    "agent-cto": "architecture, databases, infrastructure, scalability, technical tradeoffs",
+    "agent-social": "social content, hooks, campaigns, platform-specific copy, distribution",
+    "agent-media": "video concepts, scripts, storyboards, pacing, retention",
+    "agent-trader": "market education, paper-trading analysis, MQL5 simulation/code review; never claim live execution",
+    "agent-finops": "bookkeeping, budgets, cost analysis, ledgers, financial data organization",
+    "agent-integrations": "REST/GraphQL APIs, webhooks, authentication flows, service integration",
+    "agent-webops": "browser automation, Playwright, scraping, DOM inspection, web workflows",
+    "agent-qa": "testing, security review, failure analysis, validation, regression checks",
+}
+
+
+def _find_staff(staff_id):
+    return next((s for s in STAFF_MEMBERS if s["id"] == staff_id), STAFF_MEMBERS[0])
+
+
+def _route_staff(user_text, current_staff_id="agent-ceo"):
+    """Pick a useful specialist from explicit task signals; CEO remains coordinator."""
+    text_value = str(user_text).lower()
+    routes = [
+        ("agent-dev", ["python", "javascript", "typescript", "react", "bug", "code", "coding", "app.py", "streamlit"]),
+        ("agent-cto", ["architecture", "database", "schema", "scalability", "system design", "infrastructure"]),
+        ("agent-designer", ["ui", "ux", "design", "wireframe", "layout", "figma", "interface"]),
+        ("agent-social", ["youtube", "instagram", "facebook", "twitter", "linkedin", "post", "caption", "hashtag"]),
+        ("agent-media", ["video", "reel", "shorts", "storyboard", "script", "editing"]),
+        ("agent-webops", ["website", "browser", "playwright", "scrape", "scraping", "click", "form", "web page", "url"]),
+        ("agent-qa", ["test", "testing", "security", "audit", "bug report", "verify", "validation"]),
+        ("agent-integrations", ["api", "webhook", "stripe", "integration", "endpoint", "oauth"]),
+        ("agent-finops", ["budget", "invoice", "expense", "ledger", "cost", "revenue", "finance"]),
+        ("agent-trader", ["forex", "xau", "gold", "eur/usd", "mt5", "mql5", "trading", "trade"]),
+    ]
+    for staff_id, keywords in routes:
+        if any(k in text_value for k in keywords):
+            return staff_id
+    return current_staff_id or "agent-ceo"
+
+
+def _memory_context(max_items=8):
+    """Give the model compact operational memory, never raw secrets or huge transcripts."""
+    office = st.session_state.get("office_data", {})
+    tasks = office.get("tasks", [])[-max_items:]
+    compact = []
+    for task in tasks:
+        compact.append({
+            "title": str(task.get("title", ""))[:160],
+            "agent": task.get("agent", ""),
+            "status": task.get("status", ""),
+        })
+    return compact
+
+
+def _brain_system(staff, user_text, mode="direct", delegation=""):
+    expertise = ROLE_INTELLIGENCE.get(staff["id"], ", ".join(staff.get("skills", [])))
+    return f"""You are {staff['name']}, {staff['title']} in AutoOffice OS.
+Your domain: {expertise}.
+You are one member of a real software office, not a role-play character.
+
+USER REQUEST:
+{user_text}
+
+MODE: {mode}
+{delegation}
+
+OPERATING RULES:
+1. Understand the exact request before answering. Do not invent a task the user did not ask for.
+2. Answer the user's actual question first. Simple questions get simple answers; do not announce a team meeting for a one-line question.
+3. Use the user's available context and operational memory when relevant, but never pretend an action happened unless a tool/result actually confirms it.
+4. If information is missing, state the missing piece briefly instead of fabricating numbers, files, web results, trades, approvals, tests, or deployments.
+5. For coding, produce complete runnable code when the request asks for code; explain only what is necessary.
+6. For complex work, structure the answer as: Goal -> Plan -> Deliverable -> Checks. Do not expose private chain-of-thought.
+7. Collaborate only when another specialist materially improves the result. Name the specialist and the exact subtask, rather than generic "I'm coordinating" language.
+8. Keep the final answer concise but useful. No fake claims such as "100% verified", "deployed", "executed", or "live" without evidence.
+9. Trading requests are for education/simulation/paper analysis only; never claim to place a real-money order.
+"""
+
+
+def office_brain(user_text, current_staff_id="agent-ceo", history_messages=None, mode="auto"):
+    """Main intelligence router: direct answer for simple work, structured multi-agent reasoning for complex work."""
+    history_messages = history_messages or []
+    chosen_id = _route_staff(user_text, current_staff_id)
+    chosen = _find_staff(chosen_id)
+    text_value = str(user_text).strip()
+
+    simple_patterns = [
+        r"^what(?:'s| is) the time\b", r"^what day is it\b", r"^hello\b", r"^hi\b",
+        r"^who are you\b", r"^thanks\b", r"^thank you\b", r"^what can you do\b"
+    ]
+    is_simple = any(re.search(pat, text_value.lower()) for pat in simple_patterns)
+    if mode == "direct" or is_simple:
+        system = _brain_system(chosen, text_value, mode="direct")
+        return query_gemini_api(system, text_value, history_messages, temperature=0.2) or _intelligent_fallback(chosen, text_value)
+
+    complex_signals = ["build", "create", "develop", "implement", "design", "analyze", "research", "plan", "fix", "debug", "automate", "compare", "project", "system", "app", "code"]
+    is_complex = len(text_value) > 140 or sum(1 for x in complex_signals if x in text_value.lower()) >= 2
+
+    memory = _memory_context()
+    if not is_complex:
+        system = _brain_system(chosen, text_value, mode="direct")
+        return query_gemini_api(system, text_value, history_messages, temperature=0.25) or _intelligent_fallback(chosen, text_value)
+
+    delegation = f"""
+For this complex request, you are the primary specialist: {chosen['name']}.
+Potential supporting specialist: {_find_staff(_route_staff(text_value, 'agent-ceo'))['name']}.
+Recent operational memory (may be empty): {json.dumps(memory, ensure_ascii=False)}
+First produce a compact execution plan internally, then return only the useful plan/deliverable to the user.
+"""
+    system = _brain_system(chosen, text_value, mode="complex", delegation=delegation)
+    result = query_gemini_api(system, text_value, history_messages, temperature=0.3)
+    if result:
+        return result
+    return _intelligent_fallback(chosen, text_value)
+
+
+def _intelligent_fallback(staff, user_text):
+    """Honest no-key fallback. It must never fabricate completed work."""
+    return (
+        f"**{staff['name']} — {staff['role']}**\n\n"
+        f"I can handle: {', '.join(staff.get('skills', [])[:5])}.\n"
+        f"Request received: **{str(user_text)[:300]}**\n\n"
+        "Gemini is not available right now, so I won't pretend this was executed. "
+        "Add a valid GEMINI_API_KEY (or set GEMINI_MODEL if needed) and retry."
+    )
+
 
 def process_domain_fallback(role_id, role_name, agent_title, user_text):
     lower = user_text.lower()
@@ -1493,9 +1653,7 @@ elif nav_option == "👔 CEO War Room (Marcus)":
             render_copy_button(user_prompt, f"ceo_user_{len(st.session_state.office_data['ceo_chat'])}")
 
         ceo_system = "You are Marcus Vance, Chief Executive Officer & Enterprise Strategist. You report directly to your Boss (the user). MANDATE: Understand the user's exact command and give an intelligent, decisive executive response (1-3 sentences). If the user asks you to open a GitHub tab, inspect app.py, modify code, or run tasks, confirm the strategy and delegate to Devon (Lead Engineer) or Atlas (Web Operator) immediately. No canned responses or generic boilerplate."
-        ai_resp = query_gemini_api(ceo_system, user_prompt, st.session_state.office_data["ceo_chat"])
-        if not ai_resp:
-            ai_resp = process_domain_fallback("ceo", "Marcus Vance", "CEO & Chief Strategist", user_prompt)
+        ai_resp = office_brain(user_prompt, "agent-ceo", st.session_state.office_data["ceo_chat"], mode="auto")
 
         st.session_state.office_data["ceo_chat"].append({"sender": "assistant", "text": ai_resp})
         record_auto_task("Marcus Vance", "Executive Suite", user_prompt, ai_resp)
@@ -1570,9 +1728,7 @@ elif nav_option == "👤 1-on-1 Workers Desks (11 Staff)":
             st.write(w_prompt)
             render_copy_button(w_prompt, f"w_usr_{len(st.session_state.office_data['worker_chats'][worker_key])}")
 
-        ai_resp = query_gemini_api(worker["prompt"], w_prompt, st.session_state.office_data["worker_chats"][worker_key])
-        if not ai_resp:
-            ai_resp = process_domain_fallback(worker["id"], worker["name"], worker["title"], w_prompt)
+        ai_resp = office_brain(w_prompt, worker_key, st.session_state.office_data["worker_chats"][worker_key], mode="auto")
 
         st.session_state.office_data["worker_chats"][worker_key].append({"sender": "assistant", "text": ai_resp})
         record_auto_task(worker["name"], worker["dept"], w_prompt, ai_resp)
@@ -1663,7 +1819,7 @@ elif nav_option == "👥 Department Teams":
                 st.write(t_prompt)
                 render_copy_button(t_prompt, f"tm_usr_{len(st.session_state.office_data['team_chats'][team_chat_key])}")
 
-            ai_resp = query_gemini_api(f"You are {dept_name} ({dept_leads}). STRICT RULE: Deliver results directly. Keep conversational text under 1-3 sentences.", t_prompt, st.session_state.office_data["team_chats"][team_chat_key])
+            ai_resp = office_brain(t_prompt, "agent-ceo", st.session_state.office_data["team_chats"][team_chat_key], mode="auto")
             if not ai_resp:
                 ai_resp = f"[{dept_name} Action Log]: Directive registered. {dept_leads} executing now."
 
@@ -1743,9 +1899,7 @@ elif nav_option == "🏢 Virtual 2D Floorplan":
             st.write(fp_prompt)
             render_copy_button(fp_prompt, f"fp_usr_{len(st.session_state.office_data['worker_chats'][fp_worker_key])}")
 
-        ai_resp = query_gemini_api(fp_worker["prompt"], fp_prompt, st.session_state.office_data["worker_chats"][fp_worker_key])
-        if not ai_resp:
-            ai_resp = process_domain_fallback(fp_worker["id"], fp_worker["name"], fp_worker["title"], fp_prompt)
+        ai_resp = office_brain(fp_prompt, fp_worker_key, st.session_state.office_data["worker_chats"][fp_worker_key], mode="auto")
 
         st.session_state.office_data["worker_chats"][fp_worker_key].append({"sender": "assistant", "text": ai_resp})
         save_persistent_memory(st.session_state.office_data)
@@ -1845,7 +1999,7 @@ elif nav_option == "🌐 Live Web & Tab Inspector":
         st.subheader("📄 Local Real app.py Source Code Inspection")
         real_code_content = read_real_app_file(250)
         st.code(real_code_content, language="python")
-    else:
+    else:a
         st.subheader("🌐 Live Web Fetch & Embedded Browser View")
         fetch_res = fetch_live_web_url(current_inspect_url)
         st.info(fetch_res)
