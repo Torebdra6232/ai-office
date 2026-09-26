@@ -47,8 +47,16 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-html, body, [class*="css"], [class*="st-"] {
+/* Material Icons preservation & font styling */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+html, body, [class*="st-"] {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Ensure Streamlit icons (like collapse sidebar arrow) render properly and do not show literal text */
+span[data-testid="stIconMaterial"], .material-symbols-rounded, [data-testid="stSidebarCollapseButton"] span {
+    font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
 }
 
 /* Background */
@@ -819,10 +827,14 @@ def query_gemini_api(system_prompt, user_text, history_messages=[]):
     last_caught_err = ""
     for model_name in models:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             headers = {"Content-Type": "application/json"}
-            if api_key.startswith("AQ.") or api_key.startswith("ya29."):
+            # Cleanly handle OAuth access token vs Google AI Studio API key
+            if api_key.startswith("ya29.") or api_key.startswith("AQ."):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
                 headers["Authorization"] = f"Bearer {api_key}"
+            else:
+                clean_key = urllib.parse.quote(api_key.strip())
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
 
             req = urllib.request.Request(
                 url,
@@ -837,13 +849,16 @@ def query_gemini_api(system_prompt, user_text, history_messages=[]):
                     if parts and "text" in parts[0]:
                         text_resp = parts[0]["text"]
                         if "fictional" not in text_resp.lower() and "ai assistant" not in text_resp.lower():
+                            st.session_state["api_status"] = "online"
                             st.session_state["last_api_error"] = ""
                             return text_resp
         except urllib.error.HTTPError as he:
             last_caught_err = f"HTTP {he.code}"
             try:
                 err_json = json.loads(he.read().decode('utf-8'))
-                last_caught_err += f": {err_json.get('error', {}).get('message', '')}"
+                msg = err_json.get('error', {}).get('message', '')
+                if msg:
+                    last_caught_err += f": {msg}"
             except Exception:
                 pass
             continue
@@ -852,6 +867,7 @@ def query_gemini_api(system_prompt, user_text, history_messages=[]):
             continue
 
     if last_caught_err:
+        st.session_state["api_status"] = "offline"
         st.session_state["last_api_error"] = last_caught_err[:120]
     return None
 
@@ -1571,18 +1587,42 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     has_key = bool(get_gemini_api_key())
+    api_status = st.session_state.get("api_status", "")
     last_err = st.session_state.get("last_api_error", "")
-    if has_key and not last_err:
+
+    if has_key and api_status == "online":
         st.markdown('<span class="badge-pill badge-emerald">● Gemini Flash: Online</span>', unsafe_allow_html=True)
-    elif has_key and last_err:
-        st.markdown('<span class="badge-pill badge-amber">● Marcus CEO Brain: Active</span>', unsafe_allow_html=True)
-        st.caption(f"⚡ Native Executive Engine | Cloud API: {last_err[:45]}")
+        st.caption("⚡ Cloud AI Acceleration Active")
+    elif has_key and (api_status == "offline" or last_err):
+        st.markdown('<span class="badge-pill badge-emerald">● Marcus Executive Brain: Active</span>', unsafe_allow_html=True)
+        st.caption("⚡ 100% Autonomous Host Engine Running")
+        with st.expander("⚙️ Cloud API Key Settings", expanded=False):
+            st.caption("Currently using native high-speed autonomous brain.")
+            new_key = st.text_input("Update Gemini API Key:", type="password", key="update_key_input", placeholder="AIzaSy... (from AI Studio)")
+            c_up1, c_up2 = st.columns(2)
+            with c_up1:
+                if st.button("Save Key", key="btn_save_key"):
+                    if new_key.strip():
+                        st.session_state.custom_api_key = new_key.strip()
+                        st.session_state["api_status"] = ""
+                        st.session_state["last_api_error"] = ""
+                        st.rerun()
+            with c_up2:
+                if st.button("Clear Key", key="btn_clear_key"):
+                    st.session_state.custom_api_key = ""
+                    st.session_state["api_status"] = ""
+                    st.session_state["last_api_error"] = ""
+                    st.rerun()
     else:
-        st.markdown('<span class="badge-pill badge-cyan">● Marcus CEO Brain: Active</span>', unsafe_allow_html=True)
-        custom_key = st.text_input("Gemini API Key / Token:", type="password", key="key_input", placeholder="Paste AQ.Ab8... or AIzaSy... key here")
-        if custom_key:
-            st.session_state.custom_api_key = custom_key
-            st.rerun()
+        st.markdown('<span class="badge-pill badge-emerald">● Marcus Executive Brain: Active</span>', unsafe_allow_html=True)
+        st.caption("⚡ 100% Autonomous Host Engine Running")
+        with st.expander("🔑 Add Gemini API Key (Optional)", expanded=False):
+            custom_key = st.text_input("Gemini API Key:", type="password", key="key_input", placeholder="AIzaSy... (from AI Studio)")
+            if custom_key:
+                st.session_state.custom_api_key = custom_key.strip()
+                st.session_state["api_status"] = ""
+                st.session_state["last_api_error"] = ""
+                st.rerun()
 
     st.markdown("---")
     st.caption("PRIMARY DEPARTMENTS & HUBS")
