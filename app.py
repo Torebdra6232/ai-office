@@ -658,7 +658,7 @@ def process_domain_fallback(role_id, role_name, agent_title, user_text):
 
     # Devon Brooks (Lead Engineer)
     elif "dev" in role_id or "devon" in role_name.lower():
-        if "app.py" in lower or "code" in lower or "see" in lower or "python" in lower:
+        if "app.py" in lower or "source code" in lower or "show code" in lower:
             real_code_content = read_real_app_file(120)
             return f"**Devon Brooks (Lead Engineer)**: Here is the REAL active code pulled directly from `app.py` on disk:\n\n```python\n{real_code_content}\n```"
         else:
@@ -867,21 +867,17 @@ app.listen(3001, () => console.log('Webhook bridge live on port 3001'));
 
     # Marcus Vance (CEO)
     else:
-        if "app.py" in lower or "code" in lower or "see" in lower:
+        if "can't see" in lower or "share screen" in lower or "where is" in lower or "how to view" in lower or "how to see" in lower or "screen" in lower or "view" in lower:
+            return "**Marcus Vance (CEO)**: To view the live embedded browser for YouTube, GitHub, or any website, click on **'🌐 Live Web & Tab Inspector'** in the left sidebar navigation menu! You can also tap the quick buttons at the top of that tab (`▶️ Open YouTube Tab` or `🐙 Open GitHub Tab`) to view the live site inside an embedded frame."
+        elif "app.py" in lower or "source code" in lower or "show app.py" in lower:
             real_code_content = read_real_app_file(120)
             return f"**Marcus Vance (CEO)**: Here is the REAL active code pulled directly from local `app.py` on disk:\n\n```python\n{real_code_content}\n```"
-        elif "github" in lower or "youtube" in lower or "open" in lower or "tab" in lower:
-            target = "https://github.com" if "github" in lower else "https://youtube.com" if "youtube" in lower else "https://google.com"
+        elif "youtube" in lower or "github" in lower:
+            target = "https://github.com" if "github" in lower else "https://youtube.com"
             res = fetch_live_web_url(target)
-            return f"**Marcus Vance (CEO)**: Deployed Atlas (Web Operator) to connect to live web destination:\n\n```\n{res}\n```\n*Tip: You can view live web tabs and GitHub/YouTube embedded directly in AutoOffice OS via the **'🌐 Live Web & Tab Inspector'** tab in the sidebar!*"
+            return f"**Marcus Vance (CEO)**: Deployed Atlas (Web Operator) to connect to live web destination:\n\n```\n{res}\n```\n*Tip: View the live website directly inside AutoOffice OS under the **'🌐 Live Web & Tab Inspector'** tab in the sidebar!*"
         else:
-            return f"""**Marcus Vance (CEO)**: Executive Blueprint & Task Delegation for "{user_text}":
-
-1. **Social Media Team (Chloe & Liam)**: Deploying multi-channel post campaigns and 9:16 video reel scripts.
-2. **Trading Desk (Ray Dalton)**: Initializing MQL5 EA position parameters and EUR/USD risk gate checks.
-3. **Coding Team (Devon & Sora)**: Writing full full-stack code, UI tokens, and PostgreSQL database schemas.
-
-*Task logged to Approvals & Daily Tasks board with full downloadable deliverable.*"""
+            return f"**Marcus Vance (CEO)**: Understood, Boss. Regarding '{user_text}' — I am coordinating with Devon (Lead Engineer), Atlas (Web Ops), and Chloe (Social Media) to execute this strategy."
 
 # ==============================================================================
 # Sidebar Navigation (All Workers + Hubs)
